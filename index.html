@@ -1629,7 +1629,12 @@ function stopPoll() {} // no-op kept so goMenu() still works
 
 function wireConn(conn) {
   _conn = conn;
-  conn.on('data',  data => applyRemoteState(data));
+  conn.on('data', data => {
+    if (data?.type === 'ready' && _myRole === 'player') {
+      S.multiLobby = null; initGame(); return;
+    }
+    applyRemoteState(data);
+  });
   conn.on('error', e    => console.warn('connection error:', e));
   conn.on('close', ()   => {
     if (_isMulti) { addLog('Opponent disconnected.'); _conn = null; render(); }
@@ -1655,7 +1660,7 @@ function createRoom() {
         S.multiLobby = { state:'waiting', roomId: _peer.id };
         render();
       });
-      _peer.on('connection', conn => { wireConn(conn); conn.on('open', () => { S.multiLobby=null; initGame(); }); });
+      _peer.on('connection', conn => { wireConn(conn); }); // initGame fires when guest sends {type:'ready'}
     } else { alert('Connection error: ' + e.message); }
   });
 
@@ -1665,11 +1670,7 @@ function createRoom() {
   });
 
   _peer.on('connection', conn => {
-    wireConn(conn);
-    conn.on('open', () => {       // wait until data channel is ready before sending
-      S.multiLobby = null;
-      initGame();
-    });
+    wireConn(conn); // initGame fires when guest sends {type:'ready'}
   });
 }
 
@@ -1689,6 +1690,7 @@ function joinRoom() {
     wireConn(conn);
     conn.on('open', () => {
       if (S.multiLobby) { S.multiLobby = { state:'joined', roomId: code }; render(); }
+      conn.send({ type: 'ready' });
     });
     conn.on('error', () => {
       alert(`Room "${code}" not found — check the code and try again.`);
