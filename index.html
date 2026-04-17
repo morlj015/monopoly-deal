@@ -269,6 +269,7 @@ let S = {
   pendingAction:null, aiThinking:false,
   doubleActive:false, discardMode:false,
   discardSelected:[], jsnPrompt:null,
+  jsnChallenge:null, lastAction:null,
 };
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -489,12 +490,12 @@ function gameOverHTML(){
 }
 
 function gameHTML(){
-  const {turn,playsLeft,mustDraw,aiThinking,discardMode,jsnPrompt,pendingAction,
+  const {turn,playsLeft,mustDraw,aiThinking,discardMode,jsnPrompt,jsnChallenge,pendingAction,
          selected,doubleActive,log,deck,playerHand,aiHand,playerBank,aiBank,
          playerSets,aiSets,discardSelected,difficulty,
          playerHouses,playerHotels,aiHouses,aiHotels}=S;
 
-  const active=turn==='player'&&!aiThinking&&!discardMode&&playsLeft>0&&!mustDraw&&!jsnPrompt;
+  const active=turn==='player'&&!aiThinking&&!discardMode&&playsLeft>0&&!mustDraw&&!jsnPrompt&&!jsnChallenge;
   const discardNeeded=discardMode?playerHand.length-7:0;
   const hasJsn=playerHand.some(c=>c.subtype==='jsn');
 
@@ -505,7 +506,9 @@ function gameHTML(){
 
   // ── Turn bar
   let turnBar='';
-  if(turn==='player'){
+  if(jsnChallenge){
+    turnBar=`<div class="turn-bar aiturn">⏳ Waiting for opponent — ${jsnChallenge.description}...</div>`;
+  } else if(turn==='player'){
     if(mustDraw){
       turnBar=`<div class="turn-bar pturn">Your turn — draw 2 cards to begin</div>`;
     } else if(discardMode){
@@ -746,6 +749,7 @@ function initGame(){
     log:[_isMulti?'Game started! Host draws 2 cards to begin.':'Game started! Draw 2 cards to begin your turn.'],
     gameOver:null, selected:null, pendingAction:null,
     doubleActive:false, discardMode:false, discardSelected:[], jsnPrompt:null,
+    jsnChallenge:null, lastAction:null,
     playerHouses:{}, playerHotels:{}, aiHouses:{}, aiHotels:{},
     discard:[], screen:'game', multiLobby:null,
   });
@@ -843,6 +847,7 @@ function playerDraw(){
   S.mustDraw=false;
   addLog(`You drew ${drawn.length} card${drawn.length!==1?'s':''}. Play up to 3 cards or end your turn.`);
   _animIds=new Set(drawn.map(c=>c.id));
+  if(_isMulti) pushState();
   render();
   _animIds.clear();
 }
@@ -870,7 +875,7 @@ function confirmDiscard(){
 }
 
 function cardClick(id){
-  if(S.turn!=='player'||S.playsLeft<=0||S.discardMode||S.mustDraw||S.jsnPrompt)return;
+  if(S.turn!=='player'||S.playsLeft<=0||S.discardMode||S.mustDraw||S.jsnPrompt||S.jsnChallenge)return;
   const card=S.playerHand.find(c=>c.id===id);
   if(!card||card.subtype==='jsn')return;
   S.selected=S.selected?.id===id?null:card;
@@ -891,8 +896,9 @@ function playSelected(mode){
     S.playerHand=playerHand.filter(c=>c.id!==card.id);
     S.playerBank=[...S.playerBank,card]; S.playsLeft--;
     addLog(`You banked ${card.name} ($${card.value}M).`);
+    S.lastAction={card, desc:`$${card.value}M to bank`};
     _animIds=new Set([card.id]);
-    if(S.playsLeft<=0)finishPlayerTurn(); else render();
+    if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
     _animIds.clear();
     return;
   }
@@ -903,9 +909,10 @@ function playSelected(mode){
     S.playerSets=ns; S.playsLeft--;
     addLog(`You played ${card.name} to ${COLORS[card.color].label}.`);
     showPlayToast('You', card, COLORS[card.color].label);
+    S.lastAction={card, desc:`→ ${COLORS[card.color].label}`};
     _animIds=new Set([card.id]);
     if(checkWin(ns,'player'))return;
-    if(S.playsLeft<=0)finishPlayerTurn(); else render();
+    if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
     _animIds.clear();
     return;
   }
@@ -918,8 +925,9 @@ function playSelected(mode){
       S.playsLeft--;
       addLog('You played Pass Go and drew 2 cards!');
       showPlayToast('You', card, 'Draw 2 cards!');
+      S.lastAction={card, desc:'Drew 2 cards'};
       _animIds=new Set(drawn.map(c=>c.id));
-      if(S.playsLeft<=0)finishPlayerTurn(); else render();
+      if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
       _animIds.clear();
       return;
     }
@@ -927,30 +935,38 @@ function playSelected(mode){
       const amt=card.amount||2;
       S.playerHand=playerHand.filter(c=>c.id!==card.id);
       S.playsLeft--;
-      addLog(`It's My Birthday! AI pays you $${amt}M.`);
-      showPlayToast('You', card, `AI pays you $${amt}M`);
+      discardCard(card);
+      addLog(`It's My Birthday! Opponent must pay $${amt}M.`);
+      showPlayToast('You', card, `Opponent pays $${amt}M`);
+      S.lastAction={card, desc:`Opponent pays $${amt}M`};
       aiMayJsn(`Birthday ($${amt}M)`, ()=>{
         const {newBank,newSets,paid}=payRent(amt,S.aiBank,S.aiSets);
         S.aiBank=newBank; S.aiSets=newSets;
         const r=applyPayment(paid,S.playerBank,S.playerSets);
         S.playerBank=r.newBank; S.playerSets=r.newSets;
+        addLog(`Collected $${paid}M birthday payment.`);
+        if(_isMulti){ S.lastAction={card, desc:`Paid $${paid}M`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
       });
-      if(S.playsLeft<=0)finishPlayerTurn(); else render();
+      if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
       return;
     }
     if(card.subtype==='debtcollector'){
       const amt=card.amount||5;
       S.playerHand=playerHand.filter(c=>c.id!==card.id);
       S.playsLeft--;
-      addLog(`Debt Collector! AI pays you $${amt}M.`);
-      showPlayToast('You', card, `AI pays you $${amt}M`);
+      discardCard(card);
+      addLog(`Debt Collector! Opponent must pay $${amt}M.`);
+      showPlayToast('You', card, `Opponent pays $${amt}M`);
+      S.lastAction={card, desc:`Opponent pays $${amt}M`};
       aiMayJsn(`Debt Collector ($${amt}M)`, ()=>{
         const {newBank,newSets,paid}=payRent(amt,S.aiBank,S.aiSets);
         S.aiBank=newBank; S.aiSets=newSets;
         const r=applyPayment(paid,S.playerBank,S.playerSets);
         S.playerBank=r.newBank; S.playerSets=r.newSets;
+        addLog(`Collected $${paid}M debt.`);
+        if(_isMulti){ S.lastAction={card, desc:`Paid $${paid}M`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
       });
-      if(S.playsLeft<=0)finishPlayerTurn(); else render();
+      if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
       return;
     }
     if(card.subtype==='doublerent'){
@@ -958,8 +974,9 @@ function playSelected(mode){
       S.doubleActive=true; S.playsLeft--;
       addLog('Double the Rent is active!');
       showPlayToast('You', card, 'Next rent is DOUBLED!');
+      S.lastAction={card, desc:'Next rent is DOUBLED!'};
       _animIds=new Set([card.id]);
-      if(S.playsLeft<=0)finishPlayerTurn(); else render();
+      if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
       _animIds.clear();
       return;
     }
@@ -981,8 +998,9 @@ function playSelected(mode){
     S.playerHand=playerHand.filter(c=>c.id!==card.id);
     S.playerBank=[...S.playerBank,card]; S.playsLeft--;
     addLog(`You banked ${card.name}.`);
+    S.lastAction={card, desc:`$${card.value}M to bank`};
     _animIds=new Set([card.id]);
-    if(S.playsLeft<=0)finishPlayerTurn(); else render();
+    if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
     _animIds.clear();
   }
 }
@@ -994,7 +1012,8 @@ function placeHouse(color){
   S.playerHouses={...S.playerHouses,[color]:true};
   S.playsLeft--; S.pendingAction=null;
   addLog(`You placed a House on your ${COLORS[color].label} set! Rent +$3M`);
-  if(S.playsLeft<=0)finishPlayerTurn(); else render();
+  S.lastAction={card, desc:`House on ${COLORS[color].label}`};
+  if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
 }
 
 function placeHotel(color){
@@ -1004,7 +1023,8 @@ function placeHotel(color){
   S.playerHotels={...S.playerHotels,[color]:true};
   S.playsLeft--; S.pendingAction=null;
   addLog(`You placed a Hotel on your ${COLORS[color].label} set! Rent +$4M`);
-  if(S.playsLeft<=0)finishPlayerTurn(); else render();
+  S.lastAction={card, desc:`Hotel on ${COLORS[color].label}`};
+  if(S.playsLeft<=0)finishPlayerTurn(); else { pushState(); render(); }
 }
 
 function chooseColor(color){
@@ -1015,15 +1035,19 @@ function chooseColor(color){
   showPlayToast('You', card, `$${amt}M rent for ${COLORS[color].label}${S.doubleActive?' (Doubled!)':''}`);
   discardCard(card);
   S.playerHand=S.playerHand.filter(c=>c.id!==card.id);
+  const wasDouble=S.doubleActive;
   S.doubleActive=false;
   S.playsLeft--; S.pendingAction=null;
-  aiMayJsn(`rent ($${amt}M) for ${COLORS[color].label}`, ()=>{
+  S.lastAction={card, desc:`$${amt}M rent — ${COLORS[color].label}${wasDouble?' (Doubled!)':''}`};
+  aiMayJsn(`rent $${amt}M for ${COLORS[color].label}`, ()=>{
     const {newBank,newSets,paid}=payRent(amt,S.aiBank,S.aiSets);
     S.aiBank=newBank; S.aiSets=newSets;
     const r=applyPayment(paid,S.playerBank,S.playerSets);
     S.playerBank=r.newBank; S.playerSets=r.newSets;
+    addLog(`Collected $${paid}M rent.`);
+    if(_isMulti){ S.lastAction={card, desc:`Paid $${paid}M rent`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
   });
-  if(S.playsLeft<=0)finishPlayerTurn(); else render();
+  if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
 }
 
 function chooseTarget(color){
@@ -1035,44 +1059,47 @@ function chooseTarget(color){
   if(card.subtype==='dealbreaker'){
     if(!isComplete(S.aiSets,color)){ addLog("That set isn't complete!"); render(); return; }
     S.playsLeft--; S.pendingAction=null;
-    addLog(`Deal Breaker targeting AI's ${COLORS[color].label} set!`);
+    addLog(`Deal Breaker targeting opponent's ${COLORS[color].label} set!`);
     _targetedIds=new Set((S.aiSets[color]||[]).map(c=>c.id));
-    showPlayToast('You', card, `DEAL BREAKER on AI's ${COLORS[color].label}!`);
+    showPlayToast('You', card, `DEAL BREAKER on ${COLORS[color].label}!`);
+    S.lastAction={card, desc:`DEAL BREAKER on ${COLORS[color].label}!`};
     setTimeout(()=>{ _targetedIds.clear(); },1200);
     let won=false;
-    aiMayJsn(`Deal Breaker on ${COLORS[color].label}`, ()=>{
+    aiMayJsn(`Deal Breaker on your ${COLORS[color].label} set`, ()=>{
       const stolen=S.aiSets[color]||[];
       const newAi={...S.aiSets}; delete newAi[color]; S.aiSets=newAi;
       const ns={...S.playerSets,[color]:stolen}; S.playerSets=ns;
-      // Transfer house/hotel with the set
       if(S.aiHouses[color]){ S.playerHouses={...S.playerHouses,[color]:true}; const h={...S.aiHouses}; delete h[color]; S.aiHouses=h; }
       if(S.aiHotels[color]){ S.playerHotels={...S.playerHotels,[color]:true}; const h={...S.aiHotels}; delete h[color]; S.aiHotels=h; }
-      addLog(`DEAL BREAKER! You stole AI's complete ${COLORS[color].label} set!`);
+      addLog(`DEAL BREAKER! You stole the complete ${COLORS[color].label} set!`);
       won=checkWin(ns,'player');
+      if(_isMulti){ if(!won){ S.lastAction={card, desc:`Stole ${COLORS[color].label} set!`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); } }
     });
     if(won)return;
-    if(S.playsLeft<=0)finishPlayerTurn(); else render();
+    if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
     return;
   }
   if(card.subtype==='slydeal'){
     const cc=S.aiSets[color]||[];
-    if(!cc.length){ addLog("AI has nothing there!"); render(); return; }
+    if(!cc.length){ addLog("Opponent has nothing there!"); render(); return; }
     const stolen=cc[cc.length-1];
     S.playsLeft--; S.pendingAction=null;
-    addLog(`Sly Deal targeting AI's ${stolen.name}!`);
+    addLog(`Sly Deal targeting opponent's ${stolen.name}!`);
     _targetedIds=new Set([stolen.id]);
-    showPlayToast('You', card, `Stealing AI's ${stolen.name}!`);
+    showPlayToast('You', card, `Stealing ${stolen.name}!`);
+    S.lastAction={card, desc:`Stealing ${stolen.name}!`};
     setTimeout(()=>{ _targetedIds.clear(); },1200);
     let won=false;
-    aiMayJsn(`Sly Deal on ${stolen.name}`, ()=>{
+    aiMayJsn(`Sly Deal on your ${stolen.name}`, ()=>{
       S.aiSets={...S.aiSets,[color]:cc.slice(0,-1)};
       const ns={...S.playerSets,[stolen.color]:[...(S.playerSets[stolen.color]||[]),stolen]};
       S.playerSets=ns;
       addLog(`SLY DEAL! You stole ${stolen.name}!`);
       won=checkWin(ns,'player');
+      if(_isMulti){ if(!won){ S.lastAction={card, desc:`Stole ${stolen.name}!`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); } }
     });
     if(won)return;
-    if(S.playsLeft<=0)finishPlayerTurn(); else render();
+    if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
   }
   if(card.subtype==='forceddeal'){
     const cc=S.aiSets[color]||[];
@@ -1102,31 +1129,30 @@ function chooseGive(cardId){
   addLog(`Forced Deal: swapping your ${giveCard.name} for AI's ${aiCard.name}!`);
   showPlayToast('You', card, `${giveCard.name} ↔ ${aiCard.name}`);
 
+  S.lastAction={card, desc:`${giveCard.name} ↔ ${aiCard.name}`};
   let won=false;
-  aiMayJsn(`Forced Deal (swapping ${giveCard.name} for ${aiCard.name})`, ()=>{
-    // Remove giveCard from player's sets
+  aiMayJsn(`Forced Deal — swapping your ${aiCard.name} for ${giveCard.name}`, ()=>{
     const newPS=JSON.parse(JSON.stringify(S.playerSets));
     newPS[giveColor].splice(giveIdx,1);
     if(!newPS[giveColor].length) delete newPS[giveColor];
 
-    // Remove aiCard from AI's sets
     const newAS=JSON.parse(JSON.stringify(S.aiSets));
     newAS[aiColor]=newAS[aiColor].filter(c=>c.id!==aiCard.id);
     if(!newAS[aiColor].length) delete newAS[aiColor];
 
-    // Give giveCard to AI, aiCard to player
     if(!newAS[giveCard.color])newAS[giveCard.color]=[];
     newAS[giveCard.color].push(giveCard);
     if(!newPS[aiCard.color])newPS[aiCard.color]=[];
     newPS[aiCard.color].push(aiCard);
 
     S.playerSets=newPS; S.aiSets=newAS;
-    addLog(`Swap complete! You got ${aiCard.name}, AI got ${giveCard.name}.`);
+    addLog(`Swap complete! You got ${aiCard.name}, opponent got ${giveCard.name}.`);
     won=checkWin(newPS,'player');
     if(!won) checkWin(newAS,'ai');
+    if(_isMulti && !won){ S.lastAction={card, desc:`Swapped ${giveCard.name} ↔ ${aiCard.name}`}; pushState(); if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
   });
   if(won)return;
-  if(S.playsLeft<=0)finishPlayerTurn(); else render();
+  if(!S.jsnChallenge){ if(S.playsLeft<=0)finishPlayerTurn(); else render(); }
 }
 
 function jsnReply(useIt){
@@ -1163,7 +1189,13 @@ function promptJsn(description, onAccept, onBlock){
 
 // AI decides whether to use JSN against a player action. Returns true if blocked.
 function aiMayJsn(description, onProceed){
-  if(_isMulti){ onProceed(); return; } // JSN not yet supported in multiplayer
+  if(_isMulti){
+    // Send a JSN challenge to the opponent; pause until they respond
+    _pendingJsnResolve = { onAccept: onProceed, onBlock: null };
+    S.jsnChallenge = { description };
+    pushState();
+    return;
+  }
   const jsnCard=S.aiHand.find(c=>c.subtype==='jsn');
   const willBlock=jsnCard&&(
     S.difficulty==='hard'||
@@ -1560,13 +1592,14 @@ function runAiTurn(){
 
 // ─── Multiplayer ─────────────────────────────────────────────────────────────
 
-let _joinDraft = '';
-let _roomId    = null;
-let _myRole    = 'player';   // 'player' = host, 'ai' = guest
-let _isMulti   = false;
-let _lastVer   = 0;
-let _peer      = null;   // PeerJS Peer instance
-let _conn      = null;   // active DataConnection
+let _joinDraft         = '';
+let _roomId            = null;
+let _myRole            = 'player';   // 'player' = host, 'ai' = guest
+let _isMulti           = false;
+let _lastVer           = 0;
+let _peer              = null;
+let _conn              = null;
+let _pendingJsnResolve = null;  // {onAccept, onBlock} while waiting for remote JSN response
 
 // ── Perspective swap (swaps player ↔ ai fields in-place) ──────────────────
 // Guest always works locally with player=themselves; swap happens at the
@@ -1585,7 +1618,6 @@ function swapPerspective(st) {
 // ── State sync ──────────────────────────────────────────────────────────────
 
 function buildNetState() {
-  // Serialise only the fields that need to be shared
   const snap = JSON.parse(JSON.stringify({
     deck:S.deck, discard:S.discard,
     playerHand:S.playerHand, aiHand:S.aiHand,
@@ -1598,6 +1630,8 @@ function buildNetState() {
     discardSelected:S.discardSelected, pendingAction:S.pendingAction,
     log:S.log, gameOver:S.gameOver, screen:S.screen,
     difficulty:S.difficulty, version:_lastVer + 1,
+    jsnChallenge:S.jsnChallenge || null,
+    lastAction:S.lastAction || null,
   }));
   if (_myRole === 'ai') swapPerspective(snap);
   return snap;
@@ -1608,6 +1642,7 @@ function pushState() {
   const snap = buildNetState();
   _lastVer = snap.version;
   try { _conn.send(snap); } catch(e) { console.warn('send error:', e); }
+  S.lastAction = null;
 }
 
 function applyRemoteState(data) {
@@ -1618,8 +1653,37 @@ function applyRemoteState(data) {
   if (_myRole === 'ai') swapPerspective(snap);
   const keep = { difficulty:S.difficulty, screen:'game',
                  aiThinking:false, jsnPrompt:null, selected:null,
-                 multiLobby:null };  // clear lobby once game state arrives
+                 multiLobby:null };
   Object.assign(S, snap, keep);
+  S.jsnChallenge = null;  // challenge is resolved locally via jsnPrompt, not kept in S
+
+  // Show toast for opponent's most recent action
+  if (snap.lastAction) {
+    showPlayToast('Opponent', snap.lastAction.card, snap.lastAction.desc);
+  }
+
+  // If opponent is challenging us with a JSN-able action, set up the local prompt
+  if (snap.jsnChallenge) {
+    const jsnCard = S.playerHand.find(c => c.subtype === 'jsn');
+    if (!jsnCard) {
+      // No JSN card — auto-accept
+      try { _conn.send({ type:'jsnResponse', action:'accept' }); } catch(e) {}
+    } else {
+      S.jsnPrompt = {
+        description: snap.jsnChallenge.description,
+        onAccept: () => {
+          try { _conn.send({ type:'jsnResponse', action:'accept' }); } catch(e) {}
+          render();
+        },
+        onBlock: () => {
+          // jsnReply already removed the card from hand; just send the response
+          try { _conn.send({ type:'jsnResponse', action:'block', jsnCard }); } catch(e) {}
+          render();
+        },
+      };
+    }
+  }
+
   render();
 }
 
@@ -1632,6 +1696,22 @@ function wireConn(conn) {
   conn.on('data', data => {
     if (data?.type === 'ready' && _myRole === 'player') {
       S.multiLobby = null; initGame(); return;
+    }
+    if (data?.type === 'jsnResponse') {
+      const resolve = _pendingJsnResolve;
+      _pendingJsnResolve = null;
+      S.jsnChallenge = null;
+      if (data.action === 'block') {
+        // Remove JSN card from opponent's hand (ai's hand from our perspective)
+        const jsnIdx = S.aiHand.findIndex(c => c.subtype === 'jsn');
+        if (jsnIdx !== -1) { discardCard(S.aiHand[jsnIdx]); S.aiHand.splice(jsnIdx, 1); }
+        addLog('Opponent blocked with Just Say No!');
+        if (data.jsnCard) showPlayToast('Opponent', data.jsnCard, 'Just Say No! — Blocked!');
+        render();
+      } else {
+        if (resolve?.onAccept) resolve.onAccept();
+      }
+      return;
     }
     applyRemoteState(data);
   });
