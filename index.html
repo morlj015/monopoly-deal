@@ -749,7 +749,7 @@ function initGame(){
     playerHouses:{}, playerHotels:{}, aiHouses:{}, aiHotels:{},
     discard:[], screen:'game', multiLobby:null,
   });
-  if (_isMulti) { pushState(); startPoll(); }
+  if (_isMulti) { pushState(); }
   render();
 }
 
@@ -1688,8 +1688,7 @@ function joinRoom() {
     const conn = _peer.connect(_roomId, { reliable:true });
     wireConn(conn);
     conn.on('open', () => {
-      S.multiLobby = { state:'joined', roomId: code };
-      render();
+      if (S.multiLobby) { S.multiLobby = { state:'joined', roomId: code }; render(); }
     });
     conn.on('error', () => {
       alert(`Room "${code}" not found — check the code and try again.`);
