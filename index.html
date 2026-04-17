@@ -1618,7 +1618,7 @@ function applyRemoteState(data) {
   if (_myRole === 'ai') swapPerspective(snap);
   const keep = { difficulty:S.difficulty, screen:'game',
                  aiThinking:false, jsnPrompt:null, selected:null,
-                 multiLobby:S.multiLobby };
+                 multiLobby:null };  // clear lobby once game state arrives
   Object.assign(S, snap, keep);
   render();
 }
@@ -1655,7 +1655,7 @@ function createRoom() {
         S.multiLobby = { state:'waiting', roomId: _peer.id };
         render();
       });
-      _peer.on('connection', conn => { wireConn(conn); S.multiLobby=null; initGame(); });
+      _peer.on('connection', conn => { wireConn(conn); conn.on('open', () => { S.multiLobby=null; initGame(); }); });
     } else { alert('Connection error: ' + e.message); }
   });
 
@@ -1666,8 +1666,10 @@ function createRoom() {
 
   _peer.on('connection', conn => {
     wireConn(conn);
-    S.multiLobby = null;
-    initGame();
+    conn.on('open', () => {       // wait until data channel is ready before sending
+      S.multiLobby = null;
+      initGame();
+    });
   });
 }
 
