@@ -10,14 +10,23 @@ import {
   type Card
 } from "../domain/cards";
 import type { GameState } from "../domain/state";
-import { layoutTableCards, type TableCardPlacement } from "./tableLayout";
+import {
+  CARD_DEPTH,
+  CARD_WIDTH,
+  TABLE_HALF_DEPTH,
+  TABLE_HALF_WIDTH,
+  layoutTableCards,
+  layoutTableLabels,
+  type TableLabelPlacement,
+  type TableCardPlacement
+} from "./tableLayout";
 
 interface ThreeTableProps {
   state: GameState;
 }
 
-const cardGeometry = new THREE.BoxGeometry(0.54, 0.032, 0.76);
-const faceGeometry = new THREE.PlaneGeometry(0.5, 0.7);
+const cardGeometry = new THREE.BoxGeometry(CARD_WIDTH, 0.032, CARD_DEPTH);
+const faceGeometry = new THREE.PlaneGeometry(CARD_WIDTH - 0.04, CARD_DEPTH - 0.06);
 
 const disposeObject = (object: THREE.Object3D) => {
   if (object instanceof THREE.Mesh) {
@@ -28,6 +37,10 @@ const disposeObject = (object: THREE.Object3D) => {
       mapped.map?.dispose();
       material.dispose();
     }
+  }
+  if (object instanceof THREE.Sprite) {
+    object.material.map?.dispose();
+    object.material.dispose();
   }
   for (const child of object.children) {
     disposeObject(child);
@@ -133,6 +146,31 @@ const makeTexture = (card?: Card) => {
   return texture;
 };
 
+const makeLabelTexture = (text: string) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = "rgba(6, 10, 16, 0.82)";
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "900 84px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.strokeText(text, canvas.width / 2, canvas.height / 2 + 4, canvas.width - 36);
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2, canvas.width - 72);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+};
+
 const addCard = (group: THREE.Group, place: TableCardPlacement) => {
   const { accent } = cardAccent(place.card);
   const holder = new THREE.Group();
@@ -170,6 +208,21 @@ const addCard = (group: THREE.Group, place: TableCardPlacement) => {
   group.add(holder);
 };
 
+const addLabel = (group: THREE.Group, place: TableLabelPlacement) => {
+  const texture = makeLabelTexture(place.text);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture ?? undefined,
+      transparent: true,
+      depthTest: false
+    })
+  );
+  sprite.position.set(place.x, place.y, place.z);
+  sprite.scale.set(1.55, 0.42, 1);
+  sprite.renderOrder = 3;
+  group.add(sprite);
+};
+
 export const ThreeTable = ({ state }: ThreeTableProps) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cardsRef = useRef<THREE.Group | null>(null);
@@ -182,10 +235,10 @@ export const ThreeTable = ({ state }: ThreeTableProps) => {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#12171d");
-    scene.fog = new THREE.Fog("#12171d", 8, 17);
+    scene.fog = new THREE.Fog("#12171d", 10, 22);
 
-    const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 100);
-    camera.position.set(0, 8.2, 8.9);
+    const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 9.8, 10.8);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -203,24 +256,25 @@ export const ThreeTable = ({ state }: ThreeTableProps) => {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
-    controls.minDistance = 5.8;
-    controls.maxDistance = 13;
+    controls.minDistance = 6.5;
+    controls.maxDistance = 16.5;
     controls.maxPolarAngle = Math.PI / 2.15;
     controls.target.set(0, 0, 0);
 
     const table = new THREE.Mesh(
-      new THREE.BoxGeometry(10.4, 0.16, 7.0),
+      new THREE.BoxGeometry(TABLE_HALF_WIDTH * 2, 0.16, TABLE_HALF_DEPTH * 2),
       new THREE.MeshStandardMaterial({ color: "#1f6a4a", roughness: 0.82 })
     );
     table.position.y = -0.04;
     table.receiveShadow = true;
     scene.add(table);
 
+    const railRadius = TABLE_HALF_WIDTH - 0.25;
     const rail = new THREE.Mesh(
-      new THREE.TorusGeometry(5.15, 0.035, 8, 128),
+      new THREE.TorusGeometry(railRadius, 0.035, 8, 128),
       new THREE.MeshStandardMaterial({ color: "#d9b45b", roughness: 0.42, metalness: 0.28 })
     );
-    rail.scale.z = 0.68;
+    rail.scale.z = (TABLE_HALF_DEPTH - 0.25) / railRadius;
     rail.rotation.x = Math.PI / 2;
     rail.position.y = 0.07;
     scene.add(rail);
@@ -277,6 +331,9 @@ export const ThreeTable = ({ state }: ThreeTableProps) => {
     disposeGroup(group);
     for (const place of layoutTableCards(state)) {
       addCard(group, place);
+    }
+    for (const place of layoutTableLabels(state)) {
+      addLabel(group, place);
     }
   }, [state.version, state.deck.length, state.players, state.playerOrder, state.currentTurn]);
 
