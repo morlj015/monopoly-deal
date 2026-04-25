@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeck,
   isActionCard,
+  isBankableCard,
   isMoneyCard,
   isPropertyCard,
   isPropertyWildCard,
@@ -33,7 +34,7 @@ import {
   playSlyDeal,
   startGame
 } from "./commands";
-import { chooseBotEvents } from "./bot";
+import { COMPETITION_BOT_STRATEGY_IDS, chooseBotEvents, registerBotStrategy } from "./bot";
 import {
   applyEvents,
   bankValue,
@@ -751,5 +752,65 @@ describe("bot policy", () => {
     const ready = applyEvents(state, drawEvents ?? []);
     const playEvents = chooseBotEvents(ready, DEALER, "medium");
     expect(playEvents?.[0].type).toBe("PropertyPlayed");
+  });
+
+  it("resolves strategy plugins from the active bot player config", () => {
+    const pool = createPool();
+    const property = pool.takeProperty("yellow");
+    const money = pool.takeMoney(5);
+    const strategyId = "test-bank-first";
+    registerBotStrategy({
+      id: strategyId,
+      name: "Test Bank First",
+      description: "Test strategy that banks before building.",
+      chooseEvents: ({ state, playerId }) => {
+        const card = state.players[playerId].hand.find(isBankableCard);
+        return card ? playCardToBank(state, playerId, card.id) : null;
+      }
+    });
+    const state = makeState({
+      dealerHand: [property, money],
+      currentPlayer: DEALER
+    });
+    const configured: GameState = {
+      ...state,
+      players: {
+        ...state.players,
+        [DEALER]: {
+          ...state.players[DEALER],
+          botStrategyId: strategyId
+        }
+      }
+    };
+
+    const events = chooseBotEvents(configured, DEALER, "medium");
+
+    expect(events?.[0].type).toBe("CardBanked");
+    expect(events?.[0]).toMatchObject({ playerId: DEALER, card: money });
+  });
+
+  it("runs mixed strategy self-play without losing physical cards", () => {
+    let state = projectEvents(
+      startGame({
+        gameId: "mixed-strategy-prefix",
+        seed: "mixed-strategy-seed",
+        players: ["a", "b", "c", "d"].map((id, index) => ({
+          id,
+          name: id.toUpperCase(),
+          role: "bot" as const,
+          botStrategyId: COMPETITION_BOT_STRATEGY_IDS[index]
+        }))
+      })
+    );
+
+    expectConservedCards(state);
+    for (let step = 0; step < 180 && state.status === "active"; step += 1) {
+      const current = state.currentTurn;
+      expect(current).toBeTruthy();
+      const events = chooseBotEvents(state, current as PlayerId, "medium");
+      expect(events).toBeTruthy();
+      state = applyEvents(state, events ?? []);
+      expectConservedCards(state);
+    }
   });
 });

@@ -38,6 +38,76 @@ import {
 } from "./state";
 
 export type BotDifficulty = "easy" | "medium" | "hard";
+export type BotStrategyId = BotDifficulty | (string & {});
+
+export interface BotStrategyContext {
+  state: GameState;
+  playerId: PlayerId;
+}
+
+export type BotTactic = (context: BotStrategyContext) => DomainEvent[] | null;
+
+export interface BotStrategyPlugin {
+  id: BotStrategyId;
+  name: string;
+  description: string;
+  chooseEvents: (context: BotStrategyContext) => DomainEvent[] | null;
+}
+
+export const DEFAULT_BOT_STRATEGY_ID: BotDifficulty = "medium";
+export const COMPETITION_BOT_STRATEGY_IDS = [
+  "builder",
+  "rent-shark",
+  "deal-thief",
+  "banker"
+] as const satisfies readonly BotStrategyId[];
+
+const strategies = new Map<string, BotStrategyPlugin>();
+
+export const registerBotStrategy = (plugin: BotStrategyPlugin): BotStrategyPlugin => {
+  if (!plugin.id.trim()) {
+    throw new Error("Bot strategy plugins need a stable id.");
+  }
+  strategies.set(plugin.id, plugin);
+  return plugin;
+};
+
+export const listBotStrategies = (): BotStrategyPlugin[] => [...strategies.values()];
+
+export const getBotStrategy = (
+  strategyId: BotStrategyId = DEFAULT_BOT_STRATEGY_ID
+): BotStrategyPlugin => {
+  const strategy = strategies.get(strategyId) ?? strategies.get(DEFAULT_BOT_STRATEGY_ID);
+  if (!strategy) {
+    throw new Error("Default bot strategy has not been registered.");
+  }
+  return strategy;
+};
+
+export const createOrderedBotStrategy = ({
+  id,
+  name,
+  description,
+  tactics
+}: {
+  id: BotStrategyId;
+  name: string;
+  description: string;
+  tactics: readonly BotTactic[];
+}): BotStrategyPlugin => ({
+  id,
+  name,
+  description,
+  chooseEvents: (context) => {
+    for (const tactic of tactics) {
+      const events = tactic(context);
+      if (events && events.length > 0) {
+        return events;
+      }
+    }
+    return null;
+  }
+});
 
 const attempt = (factory: () => DomainEvent[]): DomainEvent[] | null => {
   try {
@@ -59,38 +129,6 @@ const firstOpponentId = (state: GameState, playerId: PlayerId): PlayerId | null 
 
 const cardValueAsc = (left: Card, right: Card) => left.value - right.value;
 const cardValueDesc = (left: Card, right: Card) => right.value - left.value;
-
-const findRentPlay = (
-  state: GameState,
-  playerId: PlayerId,
-  difficulty: BotDifficulty
-) => {
-  const player = state.players[playerId];
-  const rentCards = player.hand.filter(isRentCard);
-  const doubleRent = player.hand.find(
-    (card) => isActionCard(card) && card.action === "doubleRent"
-  );
-
-  for (const card of rentCards) {
-    const color = card.colors
-      .filter((candidate) => rentFor(player, candidate) > 0)
-      .sort((left, right) => rentFor(player, right) - rentFor(player, left))[0];
-
-    if (color) {
-      return {
-        cardId: card.id,
-        color,
-        targetPlayerId: card.scope === "one" ? firstOpponentId(state, playerId) : null,
-        doubleRentCardId:
-          difficulty === "hard" && doubleRent && state.playsRemaining >= 2
-            ? doubleRent.id
-            : undefined
-      };
-    }
-  }
-
-  return null;
-};
 
 const choosePropertyColor = (
   state: GameState,
@@ -200,10 +238,278 @@ const bankableChoice = (state: GameState, playerId: PlayerId): Card | undefined 
     .sort(cardValueDesc)[0];
 };
 
+const finishTurnChoice = (state: GameState, playerId: PlayerId): DomainEvent[] | null => {
+  const discards = discardChoice(state, playerId);
+  return discards.length > 0
+    ? attempt(() => discardCards(state, playerId, discards))
+    : attempt(() => endTurn(state, playerId));
+};
+
+const findRentPlay = (
+  state: GameState,
+  playerId: PlayerId,
+  useDoubleRent: boolean
+) => {
+  const player = state.players[playerId];
+  const doubleRent = player.hand.find(
+    (card) => isActionCard(card) && card.action === "doubleRent"
+  );
+  const targetPlayerId = firstOpponentId(state, playerId);
+
+  return player.hand
+    .filter(isRentCard)
+    .flatMap((card) =>
+      card.colors
+        .filter((candidate) => rentFor(player, candidate) > 0)
+        .map((color) => ({
+          cardId: card.id,
+          color,
+          amount: rentFor(player, color),
+          targetPlayerId: card.scope === "one" ? targetPlayerId : null,
+          doubleRentCardId:
+            useDoubleRent && doubleRent && state.playsRemaining >= 2
+              ? doubleRent.id
+              : undefined
+        }))
+    )
+    .sort((left, right) => right.amount - left.amount)[0] ?? null;
+};
+
+const playDealBreakerTactic: BotTactic = ({ state, playerId }) => {
+  const targetPlayerId = firstOpponentId(state, playerId);
+  if (!targetPlayerId) {
+    return null;
+  }
+  const hand = state.players[playerId].hand;
+  const dealBreaker = hand.find((card) => isActionCard(card) && card.action === "dealBreaker");
+  const targetCompleteSet = completedSetColors(state.players[targetPlayerId])[0];
+  if (!dealBreaker || !targetCompleteSet) {
+    return null;
+  }
+  return attempt(() => playDealBreaker(state, playerId, dealBreaker.id, targetPlayerId, targetCompleteSet));
+};
+
+const playPropertyTactic: BotTactic = ({ state, playerId }) => {
+  const property = propertyChoice(state, playerId);
+  return property
+    ? attempt(() => playProperty(state, playerId, property.card.id, property.color))
+    : null;
+};
+
+const buildImprovementTactic: BotTactic = ({ state, playerId }) => {
+  const improvement = findBuildableImprovement(state, playerId);
+  return improvement
+    ? attempt(() => buildImprovement(state, playerId, improvement.cardId, improvement.color))
+    : null;
+};
+
+const playRentTactic = (useDoubleRent: boolean): BotTactic => ({ state, playerId }) => {
+  const rentPlay = findRentPlay(state, playerId, useDoubleRent);
+  if (!rentPlay) {
+    return null;
+  }
+  return attempt(() =>
+    playRent(
+      state,
+      playerId,
+      rentPlay.cardId,
+      rentPlay.targetPlayerId,
+      rentPlay.color,
+      rentPlay.doubleRentCardId
+    )
+  );
+};
+
+const playPassGoTactic: BotTactic = ({ state, playerId }) => {
+  const passGo = state.players[playerId].hand.find(
+    (card) => isActionCard(card) && card.action === "passGo"
+  );
+  return passGo ? attempt(() => playPassGo(state, playerId, passGo.id)) : null;
+};
+
+const playDebtCollectorTactic: BotTactic = ({ state, playerId }) => {
+  const targetPlayerId = firstOpponentId(state, playerId);
+  const debtCollector = state.players[playerId].hand.find(
+    (card) => isActionCard(card) && card.action === "debtCollector"
+  );
+  if (!targetPlayerId || !debtCollector) {
+    return null;
+  }
+  return attempt(() => playDebtCollector(state, playerId, debtCollector.id, targetPlayerId));
+};
+
+const playBirthdayTactic: BotTactic = ({ state, playerId }) => {
+  const birthday = state.players[playerId].hand.find(
+    (card) => isActionCard(card) && card.action === "birthday"
+  );
+  return birthday ? attempt(() => playBirthday(state, playerId, birthday.id)) : null;
+};
+
+const playSlyDealTactic: BotTactic = ({ state, playerId }) => {
+  const targetPlayerId = firstOpponentId(state, playerId);
+  const slyDeal = state.players[playerId].hand.find(
+    (card) => isActionCard(card) && card.action === "slyDeal"
+  );
+  const targetProperty = targetPlayerId
+    ? findStealableIncompleteProperty(state, targetPlayerId)
+    : null;
+  if (!targetPlayerId || !slyDeal || !targetProperty) {
+    return null;
+  }
+  return attempt(() => playSlyDeal(state, playerId, slyDeal.id, targetPlayerId, targetProperty.id));
+};
+
+const playForcedDealTactic: BotTactic = ({ state, playerId }) => {
+  const targetPlayerId = firstOpponentId(state, playerId);
+  const forcedDeal = state.players[playerId].hand.find(
+    (card) => isActionCard(card) && card.action === "forcedDeal"
+  );
+  const forcedDealPair = targetPlayerId
+    ? findForcedDealPair(state, playerId, targetPlayerId)
+    : null;
+  if (!targetPlayerId || !forcedDeal || !forcedDealPair) {
+    return null;
+  }
+  return attempt(() =>
+    playForcedDeal(
+      state,
+      playerId,
+      forcedDeal.id,
+      targetPlayerId,
+      forcedDealPair.ownProperty.id,
+      forcedDealPair.targetProperty.id
+    )
+  );
+};
+
+const bankHighestValueTactic: BotTactic = ({ state, playerId }) => {
+  const bankable = bankableChoice(state, playerId);
+  return bankable ? attempt(() => playCardToBank(state, playerId, bankable.id)) : null;
+};
+
+export const BOT_TACTICS = {
+  dealBreaker: playDealBreakerTactic,
+  property: playPropertyTactic,
+  improvement: buildImprovementTactic,
+  rent: playRentTactic(false),
+  doubleRent: playRentTactic(true),
+  passGo: playPassGoTactic,
+  debtCollector: playDebtCollectorTactic,
+  birthday: playBirthdayTactic,
+  slyDeal: playSlyDealTactic,
+  forcedDeal: playForcedDealTactic,
+  bankHighestValue: bankHighestValueTactic
+} as const satisfies Record<string, BotTactic>;
+
+[
+  createOrderedBotStrategy({
+    id: "easy",
+    name: "Easy",
+    description: "Builds obvious property sets, then banks value when it runs out of table plays.",
+    tactics: [
+      BOT_TACTICS.property,
+      BOT_TACTICS.rent,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "medium",
+    name: "Balanced",
+    description: "Builds property, collects rent, plays draw cards, and uses basic theft actions.",
+    tactics: [
+      BOT_TACTICS.property,
+      BOT_TACTICS.improvement,
+      BOT_TACTICS.rent,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.debtCollector,
+      BOT_TACTICS.birthday,
+      BOT_TACTICS.slyDeal,
+      BOT_TACTICS.forcedDeal,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "hard",
+    name: "Ruthless",
+    description: "Prioritizes Deal Breaker and doubled rent before building its own board.",
+    tactics: [
+      BOT_TACTICS.dealBreaker,
+      BOT_TACTICS.doubleRent,
+      BOT_TACTICS.property,
+      BOT_TACTICS.improvement,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.debtCollector,
+      BOT_TACTICS.birthday,
+      BOT_TACTICS.slyDeal,
+      BOT_TACTICS.forcedDeal,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "builder",
+    name: "Builder",
+    description: "Chases complete sets and improvements before most action cards.",
+    tactics: [
+      BOT_TACTICS.property,
+      BOT_TACTICS.improvement,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.rent,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "rent-shark",
+    name: "Rent Shark",
+    description: "Turns every rent card into pressure and doubles rent whenever possible.",
+    tactics: [
+      BOT_TACTICS.doubleRent,
+      BOT_TACTICS.property,
+      BOT_TACTICS.improvement,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.debtCollector,
+      BOT_TACTICS.birthday,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "deal-thief",
+    name: "Deal Thief",
+    description: "Looks for Deal Breaker, Sly Deal, and Forced Deal before normal growth.",
+    tactics: [
+      BOT_TACTICS.dealBreaker,
+      BOT_TACTICS.slyDeal,
+      BOT_TACTICS.forcedDeal,
+      BOT_TACTICS.property,
+      BOT_TACTICS.rent,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.bankHighestValue
+    ]
+  }),
+  createOrderedBotStrategy({
+    id: "banker",
+    name: "Banker",
+    description: "Builds enough board presence, then preserves payment power in the bank.",
+    tactics: [
+      BOT_TACTICS.property,
+      BOT_TACTICS.passGo,
+      BOT_TACTICS.bankHighestValue,
+      BOT_TACTICS.improvement,
+      BOT_TACTICS.rent
+    ]
+  })
+].forEach(registerBotStrategy);
+
+const strategyIdForPlayer = (
+  state: GameState,
+  playerId: PlayerId,
+  fallbackStrategyId: BotStrategyId = DEFAULT_BOT_STRATEGY_ID
+): BotStrategyId =>
+  state.players[playerId]?.botStrategyId ?? fallbackStrategyId;
+
 export const chooseBotEvents = (
   state: GameState,
   playerId: PlayerId,
-  difficulty: BotDifficulty
+  fallbackStrategyId: BotStrategyId = DEFAULT_BOT_STRATEGY_ID
 ): DomainEvent[] | null => {
   if (state.status !== "active" || state.currentTurn !== playerId) {
     return null;
@@ -213,166 +519,17 @@ export const chooseBotEvents = (
     return attempt(() => drawAtTurnStart(state, playerId));
   }
 
-  const targetPlayerId = firstOpponentId(state, playerId);
-  if (!targetPlayerId) {
-    return null;
-  }
-
   if (state.playsRemaining <= 0) {
-    const discards = discardChoice(state, playerId);
-    return discards.length > 0
-      ? attempt(() => discardCards(state, playerId, discards))
-      : attempt(() => endTurn(state, playerId));
+    return finishTurnChoice(state, playerId);
   }
 
-  const hand = state.players[playerId].hand;
-
-  if (difficulty === "hard") {
-    const dealBreaker = hand.find((card) => isActionCard(card) && card.action === "dealBreaker");
-    const targetCompleteSet = completedSetColors(state.players[targetPlayerId])[0];
-    if (dealBreaker && targetCompleteSet) {
-      const events = attempt(() =>
-        playDealBreaker(state, playerId, dealBreaker.id, targetPlayerId, targetCompleteSet)
-      );
-      if (events) {
-        return events;
-      }
-    }
-
-    const rentPlay = findRentPlay(state, playerId, difficulty);
-    if (rentPlay) {
-      const events = attempt(() =>
-        playRent(
-          state,
-          playerId,
-          rentPlay.cardId,
-          rentPlay.targetPlayerId,
-          rentPlay.color,
-          rentPlay.doubleRentCardId
-        )
-      );
-      if (events) {
-        return events;
-      }
-    }
+  const strategy = getBotStrategy(strategyIdForPlayer(state, playerId, fallbackStrategyId));
+  const strategyEvents = strategy.chooseEvents({ state, playerId });
+  if (strategyEvents && strategyEvents.length > 0) {
+    return strategyEvents;
   }
 
-  const property = propertyChoice(state, playerId);
-  if (property) {
-    const events = attempt(() => playProperty(state, playerId, property.card.id, property.color));
-    if (events) {
-      return events;
-    }
-  }
-
-  const improvement = findBuildableImprovement(state, playerId);
-  if (improvement) {
-    const events = attempt(() =>
-      buildImprovement(state, playerId, improvement.cardId, improvement.color)
-    );
-    if (events) {
-      return events;
-    }
-  }
-
-  if (difficulty !== "easy") {
-    const rentPlay = findRentPlay(state, playerId, difficulty);
-    if (rentPlay) {
-      const events = attempt(() =>
-        playRent(
-          state,
-          playerId,
-          rentPlay.cardId,
-          rentPlay.targetPlayerId,
-          rentPlay.color,
-          rentPlay.doubleRentCardId
-        )
-      );
-      if (events) {
-        return events;
-      }
-    }
-
-    const passGo = hand.find((card) => isActionCard(card) && card.action === "passGo");
-    if (passGo) {
-      const events = attempt(() => playPassGo(state, playerId, passGo.id));
-      if (events) {
-        return events;
-      }
-    }
-
-    const debtCollector = hand.find(
-      (card) => isActionCard(card) && card.action === "debtCollector"
-    );
-    if (debtCollector) {
-      const events = attempt(() =>
-        playDebtCollector(state, playerId, debtCollector.id, targetPlayerId)
-      );
-      if (events) {
-        return events;
-      }
-    }
-
-    const birthday = hand.find((card) => isActionCard(card) && card.action === "birthday");
-    if (birthday) {
-      const events = attempt(() => playBirthday(state, playerId, birthday.id));
-      if (events) {
-        return events;
-      }
-    }
-
-    const slyDeal = hand.find((card) => isActionCard(card) && card.action === "slyDeal");
-    const targetProperty = findStealableIncompleteProperty(state, targetPlayerId);
-    if (slyDeal && targetProperty) {
-      const events = attempt(() =>
-        playSlyDeal(state, playerId, slyDeal.id, targetPlayerId, targetProperty.id)
-      );
-      if (events) {
-        return events;
-      }
-    }
-
-    const forcedDeal = hand.find((card) => isActionCard(card) && card.action === "forcedDeal");
-    const forcedDealPair = findForcedDealPair(state, playerId, targetPlayerId);
-    if (forcedDeal && forcedDealPair) {
-      const events = attempt(() =>
-        playForcedDeal(
-          state,
-          playerId,
-          forcedDeal.id,
-          targetPlayerId,
-          forcedDealPair.ownProperty.id,
-          forcedDealPair.targetProperty.id
-        )
-      );
-      if (events) {
-        return events;
-      }
-    }
-  }
-
-  const rentPlay = findRentPlay(state, playerId, difficulty);
-  if (rentPlay) {
-    const events = attempt(() =>
-      playRent(state, playerId, rentPlay.cardId, rentPlay.targetPlayerId, rentPlay.color)
-    );
-    if (events) {
-      return events;
-    }
-  }
-
-  const bankable = bankableChoice(state, playerId);
-  if (bankable) {
-    const events = attempt(() => playCardToBank(state, playerId, bankable.id));
-    if (events) {
-      return events;
-    }
-  }
-
-  const discards = discardChoice(state, playerId);
-  return discards.length > 0
-    ? attempt(() => discardCards(state, playerId, discards))
-    : attempt(() => endTurn(state, playerId));
+  return finishTurnChoice(state, playerId);
 };
 
 export const playableRentColors = (

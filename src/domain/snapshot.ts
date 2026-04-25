@@ -12,6 +12,7 @@ export interface SnapshotPlayer {
   id: string;
   name: string;
   role: PlayerState["role"];
+  botStrategyId?: string;
   handTotal: number;
   bankValue: number;
   propertyValue: number;
@@ -58,6 +59,7 @@ export const buildSnapshot = (state: GameState): GameSnapshot => ({
       id: player.id,
       name: player.name,
       role: player.role,
+      botStrategyId: player.botStrategyId,
       handTotal: player.hand.length,
       bankValue: bank,
       propertyValue: property,

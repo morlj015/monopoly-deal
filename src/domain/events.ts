@@ -6,6 +6,7 @@ export interface PlayerConfig {
   id: PlayerId;
   name: string;
   role: "human" | "bot";
+  botStrategyId?: string;
 }
 
 export interface LocatedProperty {

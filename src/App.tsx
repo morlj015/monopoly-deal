@@ -470,7 +470,7 @@ export const App = () => {
             <CommandButton
               icon={Users}
               disabled={busy}
-              onClick={() => void startBotGame(4, difficulty)}
+              onClick={() => void startBotGame(4)}
             >
               Bot Table
             </CommandButton>

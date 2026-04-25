@@ -31,6 +31,36 @@ localStorage.setItem("mqtt_url", "ws://localhost:9001")
 localStorage.setItem("mqtt_topic_prefix", "monopoly-deal")
 ```
 
+## Bot Strategy Plugins
+
+Bot decisions are resolved through strategy plugins in `src/domain/bot.ts`.
+Each bot player can carry a `botStrategyId`, and the self-play table seats a
+mixed default lineup of Builder, Rent Shark, Deal Thief, and Banker.
+
+Add a strategy by registering a plugin:
+
+```ts
+import { registerBotStrategy, type BotStrategyPlugin } from "./domain/bot";
+import { isBankableCard } from "./domain/cards";
+import { playCardToBank } from "./domain/commands";
+
+export const cautiousBot: BotStrategyPlugin = {
+  id: "cautious",
+  name: "Cautious",
+  description: "Banks money before taking riskier actions.",
+  chooseEvents: ({ state, playerId }) => {
+    const card = state.players[playerId].hand.find(isBankableCard);
+    return card ? playCardToBank(state, playerId, card.id) : null;
+  }
+};
+
+registerBotStrategy(cautiousBot);
+```
+
+For most bots, compose existing tactics with `createOrderedBotStrategy` and
+`BOT_TACTICS` instead of writing every command decision from scratch. Make sure
+the module that registers the plugin is imported during app startup.
+
 ## Metrics Exporter
 
 ```bash

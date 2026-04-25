@@ -5,7 +5,7 @@ import { DomainRuleViolation } from "../domain/errors";
 import { applyEvents, projectEvents, type GameState } from "../domain/state";
 import { publishDomainEvent, publishSnapshot } from "../telemetry";
 import type { EventStore } from "./eventStore";
-import { createBotGameEvents, createNewGameEvents } from "./session";
+import { createBotGameEvents, createNewGameEvents, type BotLineup } from "./session";
 
 type CommandFactory = (state: GameState) => DomainEvent[];
 
@@ -91,11 +91,11 @@ export const useGameSession = (
   );
 
   const startBotGame = useCallback(
-    async (playerCount: number, nextDifficulty: BotDifficulty = difficulty) => {
+    async (playerCount: number, lineup?: BotLineup) => {
       setBusy(true);
       setError(null);
       try {
-        const newEvents = createBotGameEvents(playerCount, nextDifficulty);
+        const newEvents = createBotGameEvents(playerCount, lineup);
         const gameId = gameIdFrom(newEvents);
         if (!gameId) {
           throw new Error("New bot game did not produce a GameStarted event.");
@@ -105,14 +105,13 @@ export const useGameSession = (
         publishSnapshot(projectEvents(newEvents));
         eventsRef.current = newEvents;
         setEvents(newEvents);
-        setDifficulty(nextDifficulty);
       } catch (error) {
         setError(messageFromError(error));
       } finally {
         setBusy(false);
       }
     },
-    [difficulty, eventStore]
+    [eventStore]
   );
 
   useEffect(() => {
