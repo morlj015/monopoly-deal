@@ -754,6 +754,24 @@ describe("bot policy", () => {
     expect(playEvents?.[0].type).toBe("PropertyPlayed");
   });
 
+  it("banks Pass Go instead of resolving a zero-card draw loop", () => {
+    const pool = createPool();
+    const passGo = pool.takeAction("passGo");
+    const state = makeState({
+      dealerHand: [passGo],
+      currentPlayer: DEALER
+    });
+
+    expect(() => playPassGo(state, DEALER, passGo.id)).toThrow(DomainRuleViolation);
+
+    const events = chooseBotEvents(state, DEALER, "builder");
+    expect(events?.[0]).toMatchObject({
+      type: "CardBanked",
+      playerId: DEALER,
+      card: passGo
+    });
+  });
+
   it("resolves strategy plugins from the active bot player config", () => {
     const pool = createPool();
     const property = pool.takeProperty("yellow");

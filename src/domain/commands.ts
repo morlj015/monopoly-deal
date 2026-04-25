@@ -362,6 +362,9 @@ export const playPassGo = (
 ): DomainEvent[] => {
   assertCanPlay(state, playerId);
   const card = actionCard(state, playerId, cardId, "passGo");
+  if (state.deck.length === 0 && state.discard.length === 0) {
+    fail("No cards are available to draw.");
+  }
   return [
     { type: "ActionResolved", playerId, card, action: "passGo" },
     ...drawCardsEvents(state, playerId, 2, `${playerId}:pass-go:${cardId}`)

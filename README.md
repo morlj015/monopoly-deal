@@ -61,6 +61,45 @@ For most bots, compose existing tactics with `createOrderedBotStrategy` and
 `BOT_TACTICS` instead of writing every command decision from scratch. Make sure
 the module that registers the plugin is imported during app startup.
 
+## Local MCP Server
+
+The repo includes a local MCP server for controlling and introspecting a
+headless event-sourced Monopoly Deal simulation.
+
+Run it over stdio for desktop MCP clients:
+
+```bash
+npm run mcp
+```
+
+Run it as a local Streamable HTTP server:
+
+```bash
+npm run mcp:http
+```
+
+The HTTP endpoint defaults to:
+
+```text
+http://127.0.0.1:3334/mcp
+```
+
+Available MCP tools:
+
+- `monopoly_list_strategies`
+- `monopoly_new_bot_game`
+- `monopoly_new_human_game`
+- `monopoly_state`
+- `monopoly_recent_events`
+- `monopoly_step_bot`
+- `monopoly_run_bots`
+
+Available MCP resources:
+
+- `monopoly://state`
+- `monopoly://events/recent`
+- `monopoly://strategies`
+
 ## Metrics Exporter
 
 ```bash
