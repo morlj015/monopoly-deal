@@ -102,10 +102,36 @@ const addPropertyToOwner = (
   player.sets[color].properties.push(card);
 };
 
+const discardInvalidImprovements = (
+  player: PlayerState,
+  color: PropertyColor,
+  discard: Card[]
+) => {
+  const stack = player.sets[color];
+  const config = PROPERTY_CONFIG[color];
+  if (stack.improvements.length === 0) {
+    return;
+  }
+  if (!config.canImprove || !isCompleteSet(stack, color)) {
+    discard.push(...stack.improvements);
+    stack.improvements = [];
+    return;
+  }
+  const hasHouse = stack.improvements.some((card) => card.action === "house");
+  if (!hasHouse) {
+    const invalidHotels = stack.improvements.filter((card) => card.action === "hotel");
+    if (invalidHotels.length > 0) {
+      discard.push(...invalidHotels);
+      stack.improvements = stack.improvements.filter((card) => card.action !== "hotel");
+    }
+  }
+};
+
 const applyPaymentAsset = (
   fromPlayer: PlayerState,
   toPlayer: PlayerState,
-  asset: PaymentAsset
+  asset: PaymentAsset,
+  discard: Card[]
 ) => {
   if (asset.source === "bank") {
     const card = removeCardById(fromPlayer.bank, asset.card.id);
@@ -124,6 +150,7 @@ const applyPaymentAsset = (
     color: asset.color
   });
   if (paidProperty) {
+    discardInvalidImprovements(fromPlayer, asset.color, discard);
     addPropertyToOwner(toPlayer, paidProperty, asset.color);
   }
 };
@@ -246,7 +273,7 @@ export const applyEvent = (state: GameState, event: DomainEvent): GameState => {
       const fromPlayer = next.players[event.fromPlayerId];
       const toPlayer = next.players[event.toPlayerId];
       for (const asset of event.assets) {
-        applyPaymentAsset(fromPlayer, toPlayer, asset);
+        applyPaymentAsset(fromPlayer, toPlayer, asset, next.discard);
       }
       appendLog(
         next,
@@ -260,6 +287,7 @@ export const applyEvent = (state: GameState, event: DomainEvent): GameState => {
       const toPlayer = next.players[event.toPlayerId];
       const property = removeProperty(fromPlayer, event.property);
       if (property) {
+        discardInvalidImprovements(fromPlayer, event.property.color, next.discard);
         addPropertyToOwner(toPlayer, property, event.property.color);
       }
       appendLog(next, `${toPlayer.name} stole ${event.property.card.name} from ${fromPlayer.name}.`);
@@ -285,9 +313,11 @@ export const applyEvent = (state: GameState, event: DomainEvent): GameState => {
       const offered = removeProperty(player, event.offered);
       const received = removeProperty(target, event.received);
       if (offered) {
+        discardInvalidImprovements(player, event.offered.color, next.discard);
         addPropertyToOwner(target, offered, event.offered.color);
       }
       if (received) {
+        discardInvalidImprovements(target, event.received.color, next.discard);
         addPropertyToOwner(player, received, event.received.color);
       }
       appendLog(next, `${player.name} swapped ${event.offered.card.name} for ${event.received.card.name}.`);

@@ -18,6 +18,11 @@ import {
   type TablePropertyCard
 } from "./cards";
 import { DomainRuleViolation } from "./errors";
+import {
+  assertGameInvariants,
+  collectGameInvariantViolations,
+  DomainInvariantViolation
+} from "./invariants";
 import type { DomainEvent, PlayerId } from "./events";
 import {
   buildImprovement,
@@ -195,6 +200,7 @@ const expectConservedCards = (state: GameState, expectedTotal = buildDeck().leng
   const ids = allStateCards(state).map((card) => card.id);
   expect(ids).toHaveLength(expectedTotal);
   expect(new Set(ids).size).toBe(expectedTotal);
+  expect(() => assertGameInvariants(state, { expectedCardCount: expectedTotal })).not.toThrow();
 };
 
 const countBy = <T extends string>(values: T[]) =>
@@ -317,6 +323,19 @@ describe("deck and event setup", () => {
     }
   });
 
+  it("rejects duplicate player ids before dealing", () => {
+    expect(() =>
+      startGame({
+        gameId: "duplicate-players",
+        seed: "seed",
+        players: [
+          { id: PLAYER, name: "Player", role: "human" },
+          { id: PLAYER, name: "Clone", role: "bot" }
+        ]
+      })
+    ).toThrow(DomainRuleViolation);
+  });
+
   it("projects state only from the recorded events", () => {
     const pool = createPool();
     const money = pool.takeMoney(5);
@@ -423,6 +442,55 @@ describe("deck and event setup", () => {
   });
 });
 
+describe("domain invariants", () => {
+  it("accepts a freshly started full-deck game", () => {
+    const state = projectEvents(
+      startGame({
+        gameId: "invariant-start",
+        seed: "invariant-seed",
+        players: [
+          { id: PLAYER, name: "Player", role: "human" },
+          { id: DEALER, name: "Dealer", role: "bot" }
+        ]
+      })
+    );
+
+    expect(() => assertGameInvariants(state)).not.toThrow();
+  });
+
+  it("detects duplicated physical cards across zones", () => {
+    const pool = createPool();
+    const money = pool.takeMoney(5);
+    const state = makeState({
+      playerHand: [money],
+      dealerBank: [money]
+    });
+
+    expect(() => assertGameInvariants(state, { expectedCardCount: 2 })).toThrow(
+      DomainInvariantViolation
+    );
+    expect(collectGameInvariantViolations(state, { expectedCardCount: 2 })).toEqual(
+      expect.arrayContaining([expect.stringContaining(`card ${money.id} appears in multiple zones`)])
+    );
+  });
+
+  it("detects orphaned improvements on incomplete sets", () => {
+    const pool = createPool();
+    const house = pool.takeAction("house");
+    const state = makeState({
+      playerImprovements: {
+        brown: [house]
+      }
+    });
+
+    expect(collectGameInvariantViolations(state, { expectedCardCount: 1 })).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("player.sets.brown has improvements before the set is complete")
+      ])
+    );
+  });
+});
+
 describe("turn commands", () => {
   it("requires the active player to draw before playing", () => {
     const pool = createPool();
@@ -489,6 +557,19 @@ describe("turn commands", () => {
     expect(() => playProperty(state, PLAYER, wild.id, "red")).toThrow(DomainRuleViolation);
   });
 
+  it("rejects playing another card into an already complete set", () => {
+    const pool = createPool();
+    const wild = pool.takeWild((card) => card.colors.includes("brown"));
+    const state = makeState({
+      playerHand: [wild],
+      playerProperties: {
+        brown: [pool.takeProperty("brown"), pool.takeProperty("brown")]
+      }
+    });
+
+    expect(() => playProperty(state, PLAYER, wild.id, "brown")).toThrow(DomainRuleViolation);
+  });
+
   it("forces a discard before ending above the hand limit", () => {
     const pool = createPool();
     const hand = Array.from({ length: HAND_LIMIT + 1 }, () => pool.takeAny());
@@ -522,7 +603,7 @@ describe("action cards and rent", () => {
 
   it("charges rent, supports Double the Rent, and overpayment has no change", () => {
     const pool = createPool();
-    const rent = pool.takeRent((card) => card.colors.includes("brown"));
+    const rent = pool.takeRent((card) => card.scope === "one" && card.colors.includes("brown"));
     const doubleRent = pool.takeAction("doubleRent");
     const five = pool.takeMoney(5);
     const state = makeState({
@@ -585,6 +666,19 @@ describe("action cards and rent", () => {
     expect(next.players.c.bank).toHaveLength(0);
   });
 
+  it("rejects narrowing standard rent to one target", () => {
+    const pool = createPool();
+    const rent = pool.takeRent((card) => card.scope === "all" && card.colors.includes("brown"));
+    const state = makeState({
+      playerHand: [rent],
+      playerProperties: {
+        brown: [pool.takeProperty("brown")]
+      }
+    });
+
+    expect(() => playRent(state, PLAYER, rent.id, DEALER, "brown")).toThrow(DomainRuleViolation);
+  });
+
   it("bot targets can cancel targeted action cards with Just Say No", () => {
     const pool = createPool();
     const debtCollector = pool.takeAction("debtCollector");
@@ -626,6 +720,30 @@ describe("action cards and rent", () => {
 
     expect(next.players[DEALER].sets.green.properties).toHaveLength(0);
     expect(next.players[PLAYER].sets.green.properties.map((card) => card.id)).toEqual([green.id]);
+  });
+
+  it("discards improvements when a payment breaks the improved set", () => {
+    const pool = createPool();
+    const debtCollector = pool.takeAction("debtCollector");
+    const house = pool.takeAction("house");
+    const state = makeState({
+      playerHand: [debtCollector],
+      dealerProperties: {
+        brown: [pool.takeProperty("brown"), pool.takeProperty("brown")]
+      },
+      dealerImprovements: {
+        brown: [house]
+      }
+    });
+
+    const next = applyEvents(
+      state,
+      playDebtCollector(state, PLAYER, debtCollector.id, DEALER)
+    );
+
+    expect(next.players[DEALER].sets.brown.improvements).toHaveLength(0);
+    expect(next.discard.map((card) => card.id)).toEqual(expect.arrayContaining([house.id]));
+    expect(() => assertGameInvariants(next, { expectedCardCount: 4 })).not.toThrow();
   });
 
   it("adds house and hotel rent only on complete improvable sets", () => {
@@ -710,6 +828,24 @@ describe("steal and swap actions", () => {
     expect(next.players[DEALER].sets.brown.properties).toHaveLength(0);
   });
 
+  it("rejects Deal Breaker when the receiving color is already occupied", () => {
+    const pool = createPool();
+    const dealBreaker = pool.takeAction("dealBreaker");
+    const state = makeState({
+      playerHand: [dealBreaker],
+      playerProperties: {
+        brown: [pool.takeProperty("brown")]
+      },
+      dealerProperties: {
+        brown: [pool.takeProperty("brown"), pool.takeWild((card) => card.colors.includes("brown"))]
+      }
+    });
+
+    expect(() => playDealBreaker(state, PLAYER, dealBreaker.id, DEALER, "brown")).toThrow(
+      DomainRuleViolation
+    );
+  });
+
   it("swaps two incomplete properties with Forced Deal", () => {
     const pool = createPool();
     const forcedDeal = pool.takeAction("forcedDeal");
@@ -732,6 +868,22 @@ describe("steal and swap actions", () => {
     expect(next.players[DEALER].sets.brown.properties.map((card) => card.id)).toEqual([
       offered.id
     ]);
+  });
+
+  it("rejects Forced Deal when offering a complete set property", () => {
+    const pool = createPool();
+    const forcedDeal = pool.takeAction("forcedDeal");
+    const offered = pool.takeProperty("brown");
+    const received = pool.takeProperty("lightBlue");
+    const state = makeState({
+      playerHand: [forcedDeal],
+      playerProperties: { brown: [offered, pool.takeProperty("brown")] },
+      dealerProperties: { lightBlue: [received] }
+    });
+
+    expect(() =>
+      playForcedDeal(state, PLAYER, forcedDeal.id, DEALER, offered.id, received.id)
+    ).toThrow(DomainRuleViolation);
   });
 });
 

@@ -140,17 +140,21 @@ const choosePropertyColor = (
   if (!card || !isTablePropertyCard(card)) {
     return undefined;
   }
+  const hasRoom = (color: PropertyColor) =>
+    player.sets[color].properties.length < PROPERTY_CONFIG[color].setSize;
   if (!isPropertyWildCard(card)) {
-    return card.color;
+    return hasRoom(card.color) ? card.color : undefined;
   }
-  return [...card.colors].sort((left, right) => {
-    const leftNeed = PROPERTY_CONFIG[left].setSize - player.sets[left].properties.length;
-    const rightNeed = PROPERTY_CONFIG[right].setSize - player.sets[right].properties.length;
-    if (leftNeed !== rightNeed) {
-      return leftNeed - rightNeed;
-    }
-    return rentFor(player, right) - rentFor(player, left);
-  })[0];
+  return [...card.colors]
+    .filter(hasRoom)
+    .sort((left, right) => {
+      const leftNeed = PROPERTY_CONFIG[left].setSize - player.sets[left].properties.length;
+      const rightNeed = PROPERTY_CONFIG[right].setSize - player.sets[right].properties.length;
+      if (leftNeed !== rightNeed) {
+        return leftNeed - rightNeed;
+      }
+      return rentFor(player, right) - rentFor(player, left);
+    })[0];
 };
 
 const propertyChoice = (state: GameState, playerId: PlayerId) => {
@@ -217,7 +221,8 @@ const findForcedDealPair = (
     return null;
   }
 
-  const ownProperty = PROPERTY_COLORS.flatMap((color) => player.sets[color].properties)
+  const ownProperty = PROPERTY_COLORS.filter((color) => !isCompleteSet(player.sets[color], color))
+    .flatMap((color) => player.sets[color].properties)
     .sort(cardValueAsc)[0];
 
   return ownProperty ? { ownProperty, targetProperty } : null;

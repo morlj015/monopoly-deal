@@ -245,6 +245,9 @@ export const startGame = (command: StartGameCommand): DomainEvent[] => {
   if (command.players.length > 5) {
     fail("Monopoly Deal supports up to five players with one deck.");
   }
+  if (new Set(command.players.map((player) => player.id)).size !== command.players.length) {
+    fail("Player ids must be unique.");
+  }
 
   const deck = shuffledDeck(buildDeck(), command.seed);
   const hands: Record<PlayerId, Card[]> = {};
@@ -308,6 +311,9 @@ export const playProperty = (
   const targetColor = color as PropertyColor;
   if (isPropertyWildCard(propertyCard) && !propertyCard.colors.includes(targetColor)) {
     fail("This wild property cannot be played to that color.");
+  }
+  if (state.players[playerId].sets[targetColor].properties.length >= PROPERTY_CONFIG[targetColor].setSize) {
+    fail("This property set is already complete.");
   }
   return appendWinIfNeeded(
     state,
@@ -428,6 +434,9 @@ export const playRent = (
   if (card.scope === "one" && !targetPlayerId) {
     fail("Wild rent needs a target player.");
   }
+  if (card.scope === "all" && targetPlayerId) {
+    fail("Standard rent charges every opponent.");
+  }
   if (!card.colors.includes(color)) {
     fail("This rent card cannot charge that color.");
   }
@@ -533,6 +542,9 @@ export const playDealBreaker = (
   if (!isCompleteSet(stack, color)) {
     fail("Deal Breaker can only steal a complete set.");
   }
+  if (state.players[playerId].sets[color].properties.length > 0) {
+    fail("Deal Breaker cannot merge into an occupied color set.");
+  }
   const defense = justSayNoResponse(state, playerId, targetPlayerId, card);
   if (defense.cancelled) {
     return [{ type: "ActionResolved", playerId, card, action: "dealBreaker" }, ...defense.events];
@@ -578,6 +590,9 @@ export const playForcedDeal = (
   const locatedReceived = received as LocatedProperty;
   if (isCompleteSet(target.sets[locatedReceived.color], locatedReceived.color)) {
     fail("Forced Deal cannot take from a complete set.");
+  }
+  if (isCompleteSet(player.sets[locatedOffered.color], locatedOffered.color)) {
+    fail("Forced Deal cannot offer from a complete set.");
   }
   const defense = justSayNoResponse(state, playerId, targetPlayerId, card);
   if (defense.cancelled) {

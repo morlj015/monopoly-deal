@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { chooseBotEvents, type BotDifficulty } from "../domain/bot";
 import type { DomainEvent } from "../domain/events";
 import { DomainRuleViolation } from "../domain/errors";
+import { assertGameInvariants } from "../domain/invariants";
 import { applyEvents, projectEvents, type GameState } from "../domain/state";
 import { publishDomainEvent, publishSnapshot } from "../telemetry";
 import type { EventStore } from "./eventStore";
@@ -51,9 +52,10 @@ export const useGameSession = (
         throw new Error("Cannot append events before a game has started.");
       }
 
-      await eventStore.appendEvents(gameId, newEvents, currentEvents.length);
       const merged = [...currentEvents, ...newEvents];
       const nextState = applyEvents(projectEvents(currentEvents), newEvents);
+      assertGameInvariants(nextState);
+      await eventStore.appendEvents(gameId, newEvents, currentEvents.length);
       newEvents.forEach((event, index) => {
         publishDomainEvent(gameId, currentEvents.length + index + 1, event);
       });
@@ -75,9 +77,11 @@ export const useGameSession = (
         if (!gameId) {
           throw new Error("New game did not produce a GameStarted event.");
         }
+        const nextState = projectEvents(newEvents);
+        assertGameInvariants(nextState);
         await eventStore.appendEvents(gameId, newEvents, 0);
         newEvents.forEach((event, index) => publishDomainEvent(gameId, index + 1, event));
-        publishSnapshot(projectEvents(newEvents));
+        publishSnapshot(nextState);
         eventsRef.current = newEvents;
         setEvents(newEvents);
         setDifficulty(nextDifficulty);
@@ -100,9 +104,11 @@ export const useGameSession = (
         if (!gameId) {
           throw new Error("New bot game did not produce a GameStarted event.");
         }
+        const nextState = projectEvents(newEvents);
+        assertGameInvariants(nextState);
         await eventStore.appendEvents(gameId, newEvents, 0);
         newEvents.forEach((event, index) => publishDomainEvent(gameId, index + 1, event));
-        publishSnapshot(projectEvents(newEvents));
+        publishSnapshot(nextState);
         eventsRef.current = newEvents;
         setEvents(newEvents);
       } catch (error) {
@@ -132,22 +138,26 @@ export const useGameSession = (
           if (!gameId) {
             throw new Error("New game did not produce a GameStarted event.");
           }
+          const nextState = projectEvents(newEvents);
+          assertGameInvariants(nextState);
           await eventStore.appendEvents(gameId, newEvents, 0);
           if (!cancelled) {
             eventsRef.current = newEvents;
             setEvents(newEvents);
             setDifficulty(initialDifficulty);
             newEvents.forEach((event, index) => publishDomainEvent(gameId, index + 1, event));
-            publishSnapshot(projectEvents(newEvents));
+            publishSnapshot(nextState);
           }
           return;
         }
 
         const storedEvents = await eventStore.loadEvents(games[0].id);
+        const storedState = projectEvents(storedEvents);
+        assertGameInvariants(storedState);
         if (!cancelled) {
           eventsRef.current = storedEvents;
           setEvents(storedEvents);
-          publishSnapshot(projectEvents(storedEvents));
+          publishSnapshot(storedState);
         }
       } catch (error) {
         if (!cancelled) {

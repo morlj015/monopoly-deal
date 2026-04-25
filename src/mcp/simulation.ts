@@ -7,6 +7,7 @@ import {
 } from "../domain/bot";
 import type { Card } from "../domain/cards";
 import type { DomainEvent } from "../domain/events";
+import { assertGameInvariants } from "../domain/invariants";
 import { buildSnapshot } from "../domain/snapshot";
 import { applyEvents, projectEvents, type GameState } from "../domain/state";
 
@@ -206,11 +207,14 @@ export class MonopolyDealSimulation {
   private reset(events: DomainEvent[]) {
     this.events = [...events];
     this.state = projectEvents(events);
+    assertGameInvariants(this.state);
     this.touch();
   }
 
   private append(events: DomainEvent[]) {
-    this.state = applyEvents(this.state, events);
+    const nextState = applyEvents(this.state, events);
+    assertGameInvariants(nextState);
+    this.state = nextState;
     this.events = [...this.events, ...events];
     this.touch();
   }
