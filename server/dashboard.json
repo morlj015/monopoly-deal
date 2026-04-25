@@ -1,0 +1,165 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "monopoly-live",
+  "title": "Monopoly live",
+  "tags": ["monopoly-deal", "self-play"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "game",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(monopoly_deal_event_seq, game)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "title": "Game follow",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 200 },
+        "renderer": "canvas",
+        "getOption": "const KEY = 'monopoly_deal_autofollow';\nconst params = new URLSearchParams(window.location.search);\nconst current = params.get('var-game') || '';\nconst auto = true;\nconst go = (g) => { const u = new URL(window.location.href); u.searchParams.set('var-game', g); window.location.assign(u.toString()); };\nconst shortId = (id) => id && id.length > 18 ? id.slice(0, 8) + '...' + id.slice(-4) : id;\nreturn fetch('http://localhost:9104/games').then(r => r.json()).then(games => {\n  const latest = Array.isArray(games) && games.length ? games[games.length - 1] : '';\n  if (auto && latest && latest !== current) { setTimeout(() => go(latest), 100); }\n  const statusText = !latest ? 'no games yet' : (latest === current ? 'on latest - ' + shortId(latest) : 'latest: ' + shortId(latest) + '   current: ' + shortId(current));\n  return {\n    backgroundColor: 'transparent',\n    graphic: [\n      { type: 'group', left: 16, top: 'middle', children: [\n        { type: 'rect', shape: { width: 140, height: 28, r: 6 }, style: { fill: '#8f6b2d', stroke: '#dfc388', lineWidth: 1 }, cursor: 'pointer', onclick: () => { if (latest) go(latest); } },\n        { type: 'text', left: 70, top: 14, style: { text: 'Go to latest', fill: '#ffffff', font: '13px system-ui', textAlign: 'center', textVerticalAlign: 'middle' }, silent: true }\n      ] },\n      { type: 'group', left: 180, top: 'middle', children: [\n        { type: 'rect', shape: { width: 220, height: 28, r: 6 }, style: { fill: '#2d6a4a', stroke: '#888', lineWidth: 1 }, cursor: 'pointer', onclick: () => { if (latest) go(latest); } },\n        { type: 'text', left: 110, top: 14, style: { text: '[x]  Auto-follow latest', fill: '#ffffff', font: '13px system-ui', textAlign: 'center', textVerticalAlign: 'middle' }, silent: true }\n      ] },\n      { type: 'text', left: 450, top: 'middle', style: { text: statusText, fill: latest && latest === current ? '#9ecc8f' : '#e6e8ea', font: '13px ui-monospace, monospace', textVerticalAlign: 'middle' }, silent: true }\n    ]\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'probe failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 1,
+      "title": "Completed sets (by seq)",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const COLOR = ['#d9485f', '#57a0d8', '#d9b45b', '#6fbf73', '#c77dff'];\nconst game = new URLSearchParams(window.location.search).get('var-game') || '';\nconst metric = (s, id, key) => { const p = (s.players || []).find(x => x.id === id); return p ? (p[key] || 0) : 0; };\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const snaps = h.snapshots || [];\n  const players = [...new Set(snaps.flatMap(s => (s.players || []).map(p => p.id)))].sort();\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { data: players, textStyle: { color: '#e6e8ea' }, top: 4 },\n    grid: { top: 36, left: 40, right: 20, bottom: 28 },\n    xAxis: { type: 'value', name: 'seq', nameTextStyle: { color: '#e6e8ea' }, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    yAxis: { type: 'value', min: 0, max: 3, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    series: players.map((p, i) => ({ name: p, type: 'line', step: 'end', showSymbol: false, itemStyle: { color: COLOR[i] || '#888' }, lineStyle: { width: 2, color: COLOR[i] || '#888' }, areaStyle: { color: COLOR[i] || '#888', opacity: 0.06 }, data: snaps.map(s => [s.seq, metric(s, p, 'completedSets')]) }))\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Hand size (by seq)",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const COLOR = ['#d9485f', '#57a0d8', '#d9b45b', '#6fbf73', '#c77dff'];\nconst game = new URLSearchParams(window.location.search).get('var-game') || '';\nconst metric = (s, id, key) => { const p = (s.players || []).find(x => x.id === id); return p ? (p[key] || 0) : 0; };\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const snaps = h.snapshots || [];\n  const players = [...new Set(snaps.flatMap(s => (s.players || []).map(p => p.id)))].sort();\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { data: players, textStyle: { color: '#e6e8ea' }, top: 4 },\n    grid: { top: 36, left: 40, right: 20, bottom: 28 },\n    xAxis: { type: 'value', name: 'seq', nameTextStyle: { color: '#e6e8ea' }, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    yAxis: { type: 'value', min: 0, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    series: players.map((p, i) => ({ name: p, type: 'line', step: 'end', showSymbol: false, itemStyle: { color: COLOR[i] || '#888' }, lineStyle: { width: 2, color: COLOR[i] || '#888' }, areaStyle: { color: COLOR[i] || '#888', opacity: 0.06 }, data: snaps.map(s => [s.seq, metric(s, p, 'handTotal')]) }))\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Value and rent potential (by seq)",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const COLOR = ['#d9485f', '#57a0d8', '#d9b45b', '#6fbf73', '#c77dff'];\nconst game = new URLSearchParams(window.location.search).get('var-game') || '';\nconst metric = (s, id, key) => { const p = (s.players || []).find(x => x.id === id); return p ? (p[key] || 0) : 0; };\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const snaps = h.snapshots || [];\n  const players = [...new Set(snaps.flatMap(s => (s.players || []).map(p => p.id)))].sort();\n  const legend = players.flatMap(p => [p + ' exposed', p + ' rent']);\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { data: legend, textStyle: { color: '#e6e8ea' }, top: 4, type: 'scroll' },\n    grid: { top: 50, left: 44, right: 20, bottom: 28 },\n    xAxis: { type: 'value', name: 'seq', nameTextStyle: { color: '#e6e8ea' }, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    yAxis: { type: 'value', min: 0, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    series: players.flatMap((p, i) => [\n      { name: p + ' exposed', type: 'line', step: 'end', showSymbol: false, itemStyle: { color: COLOR[i] || '#888' }, lineStyle: { width: 2, color: COLOR[i] || '#888' }, data: snaps.map(s => [s.seq, metric(s, p, 'exposedValue')]) },\n      { name: p + ' rent', type: 'line', step: 'end', showSymbol: false, itemStyle: { color: COLOR[i] || '#888' }, lineStyle: { width: 1.5, type: 'dashed', color: COLOR[i] || '#888' }, data: snaps.map(s => [s.seq, metric(s, p, 'rentPotential')]) }\n    ])\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Deck and discard (by seq)",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const game = new URLSearchParams(window.location.search).get('var-game') || '';\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const snaps = h.snapshots || [];\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { data: ['deck', 'discard'], textStyle: { color: '#e6e8ea' }, top: 4 },\n    grid: { top: 36, left: 40, right: 20, bottom: 28 },\n    xAxis: { type: 'value', name: 'seq', nameTextStyle: { color: '#e6e8ea' }, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    yAxis: { type: 'value', min: 0, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    series: [\n      { name: 'deck', type: 'line', step: 'end', showSymbol: false, itemStyle: { color: '#57a0d8' }, lineStyle: { width: 2, color: '#57a0d8' }, areaStyle: { color: '#57a0d8', opacity: 0.08 }, data: snaps.map(s => [s.seq, s.deckTotal || 0]) },\n      { name: 'discard', type: 'line', step: 'end', showSymbol: false, itemStyle: { color: '#d9b45b' }, lineStyle: { width: 2, color: '#d9b45b' }, areaStyle: { color: '#d9b45b', opacity: 0.08 }, data: snaps.map(s => [s.seq, s.discardTotal || 0]) }\n    ]\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Completed sets",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "monopoly_deal_completed_sets{game=\"$game\"}", "legendFormat": "{{player}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 3 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["last"], "fields": "", "values": false }, "colorMode": "value", "textMode": "auto" }
+    },
+    {
+      "id": 6,
+      "title": "Cards drawn",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "monopoly_deal_cards_drawn_total{game=\"$game\"}", "legendFormat": "{{player}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["last"], "fields": "", "values": false }, "colorMode": "value", "textMode": "auto" }
+    },
+    {
+      "id": 7,
+      "title": "Payments collected",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum by (to) (monopoly_deal_payment_value_total{game=\"$game\"})", "legendFormat": "{{to}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "min": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["last"], "fields": "", "values": false }, "colorMode": "value", "textMode": "auto" }
+    },
+    {
+      "id": 8,
+      "title": "Property color spread",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const COLORS = ['brown', 'lightBlue', 'pink', 'orange', 'red', 'yellow', 'green', 'darkBlue', 'railroad', 'utility'];\nconst LABEL = { brown: 'Brown', lightBlue: 'Light Blue', pink: 'Pink', orange: 'Orange', red: 'Red', yellow: 'Yellow', green: 'Green', darkBlue: 'Dark Blue', railroad: 'Railroad', utility: 'Utility' };\nconst PLAYER_COLOR = ['#d9485f', '#57a0d8', '#d9b45b', '#6fbf73', '#c77dff'];\nconst game = new URLSearchParams(window.location.search).get('var-game') || '';\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const snaps = h.snapshots || [];\n  const latest = snaps[snaps.length - 1] || { players: [] };\n  const players = (latest.players || []).map(p => p.id).sort();\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'item' }, legend: { data: players, textStyle: { color: '#e6e8ea' }, orient: 'vertical', left: 16, top: 'middle' },\n    radar: { indicator: COLORS.map(c => ({ name: LABEL[c], max: c === 'railroad' ? 4 : c === 'utility' || c === 'brown' || c === 'darkBlue' ? 2 : 3 })), center: ['55%', '54%'], radius: '72%', axisName: { color: '#e6e8ea', fontSize: 13 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.15)' } }, splitArea: { show: false }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.25)' } } },\n    series: [{ type: 'radar', emphasis: { focus: 'series', areaStyle: { opacity: 0.35 } }, data: players.map((id, i) => { const p = (latest.players || []).find(x => x.id === id) || { propertiesByColor: {} }; return { name: id, value: COLORS.map(c => p.propertiesByColor[c] || 0), lineStyle: { color: PLAYER_COLOR[i] || '#888', width: 2 }, itemStyle: { color: PLAYER_COLOR[i] || '#888' }, areaStyle: { color: PLAYER_COLOR[i] || '#888', opacity: 0.18 } }; }) }]\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Cumulative events by type (by seq)",
+      "type": "volkovlabs-echarts-panel",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "vector(0)", "format": "time_series", "instant": true }],
+      "options": {
+        "editor": { "format": "auto", "height": 400 },
+        "renderer": "canvas",
+        "getOption": "const game = new URLSearchParams(window.location.search).get('var-game') || '';\nreturn fetch('http://localhost:9104/history?game=' + encodeURIComponent(game)).then(r => r.json()).then(h => {\n  const events = h.events || [];\n  const types = [...new Set(events.map(e => e.type))].sort();\n  const counts = Object.fromEntries(types.map(t => [t, 0]));\n  const rows = events.map(e => { counts[e.type]++; return { seq: e.seq, snapshot: { ...counts } }; });\n  return {\n    backgroundColor: 'transparent', tooltip: { trigger: 'axis' }, legend: { data: types, textStyle: { color: '#e6e8ea' }, top: 4, type: 'scroll' },\n    grid: { top: 50, left: 40, right: 20, bottom: 28 },\n    xAxis: { type: 'value', name: 'seq', nameTextStyle: { color: '#e6e8ea' }, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    yAxis: { type: 'value', min: 0, axisLabel: { color: '#e6e8ea' }, axisLine: { lineStyle: { color: '#555' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },\n    series: types.map(t => ({ name: t, type: 'line', step: 'end', showSymbol: false, smooth: false, lineStyle: { width: 1.5 }, data: rows.map(r => [r.seq, r.snapshot[t] || 0]) }))\n  };\n}).catch(e => ({ graphic: [{ type: 'text', left: 16, top: 'middle', style: { text: 'history fetch failed: ' + e.message, fill: '#ff9090' }, silent: true }] }));"
+      }
+    }
+  ]
+}
