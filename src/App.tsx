@@ -8,6 +8,7 @@ import {
   Landmark,
   Play,
   RefreshCw,
+  SlidersHorizontal,
   Trash2,
   Users,
   X
@@ -30,7 +31,14 @@ import {
   playRent,
   playSlyDeal
 } from "./domain/commands";
-import { playableRentColors, type BotDifficulty } from "./domain/bot";
+import {
+  COMPETITION_BOT_STRATEGY_IDS,
+  getBotStrategy,
+  listBotStrategies,
+  playableRentColors,
+  type BotDifficulty,
+  type BotStrategyId
+} from "./domain/bot";
 import {
   isActionCard,
   isBankableCard,
@@ -59,6 +67,9 @@ import { ThreeTable } from "./ui/ThreeTable";
 type Icon = typeof Play;
 
 const difficultyOptions: BotDifficulty[] = ["easy", "medium", "hard"];
+const playerCountOptions = [2, 3, 4, 5];
+const fallbackCompetitionStrategy = (index: number): BotStrategyId =>
+  COMPETITION_BOT_STRATEGY_IDS[index % COMPETITION_BOT_STRATEGY_IDS.length];
 
 const money = (value: number) => `$${value}M`;
 
@@ -304,7 +315,21 @@ export const App = () => {
   const [forcedOwnId, setForcedOwnId] = useState<string | null>(null);
   const [forcedTargetId, setForcedTargetId] = useState<string | null>(null);
   const [botDelay, setBotDelay] = useState(250);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [botPlayerCount, setBotPlayerCount] = useState(4);
+  const [botStrategyIds, setBotStrategyIds] = useState<BotStrategyId[]>([
+    ...COMPETITION_BOT_STRATEGY_IDS
+  ]);
 
+  const strategyOptions = useMemo(() => listBotStrategies(), []);
+  const botLineup = useMemo(
+    () =>
+      Array.from(
+        { length: botPlayerCount },
+        (_, index) => botStrategyIds[index] ?? fallbackCompetitionStrategy(index)
+      ),
+    [botPlayerCount, botStrategyIds]
+  );
   const players = state.playerOrder.map((playerId) => state.players[playerId]).filter(Boolean);
   const human = players.find((player) => player.role === "human");
   const focusPlayer = human ?? (state.currentTurn ? state.players[state.currentTurn] : players[0]);
@@ -331,6 +356,25 @@ export const App = () => {
       ? playableRentColors(state, human.id, selectedCard.id)
       : [];
   const wildPropertyColors = selectedCard && isPropertyWildCard(selectedCard) ? selectedCard.colors : [];
+
+  const changeBotPlayerCount = (count: number) => {
+    setBotPlayerCount(count);
+    setBotStrategyIds((current) =>
+      Array.from({ length: count }, (_, index) => current[index] ?? fallbackCompetitionStrategy(index))
+    );
+  };
+
+  const changeBotStrategy = (seatIndex: number, strategyId: BotStrategyId) => {
+    setBotStrategyIds((current) =>
+      Array.from(
+        { length: Math.max(botPlayerCount, seatIndex + 1) },
+        (_, index) =>
+          index === seatIndex
+            ? strategyId
+            : current[index] ?? fallbackCompetitionStrategy(index)
+      )
+    );
+  };
 
   useEffect(() => {
     if (!selectedCardId || human?.hand.some((card) => card.id === selectedCardId)) {
@@ -447,30 +491,89 @@ export const App = () => {
             </div>
           </div>
           <div className="top-actions">
-            <div className="difficulty-tabs" role="tablist" aria-label="Difficulty">
-              {difficultyOptions.map((option) => (
-                <button
-                  key={option}
-                  className={option === difficulty ? "active" : ""}
-                  onClick={() => setDifficulty(option)}
-                  disabled={busy || isBotTurn}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+            <details
+              className="setup-menu"
+              open={setupOpen}
+              onToggle={(event) => setSetupOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <SlidersHorizontal size={16} strokeWidth={2.2} />
+                <span>Setup</span>
+              </summary>
+              <div className="setup-panel">
+                <section className="setup-group">
+                  <span className="setup-label">Dealer</span>
+                  <div className="difficulty-tabs" role="tablist" aria-label="Dealer strategy">
+                    {difficultyOptions.map((option) => (
+                      <button
+                        key={option}
+                        className={option === difficulty ? "active" : ""}
+                        onClick={() => setDifficulty(option)}
+                        disabled={busy || isBotTurn}
+                      >
+                        {getBotStrategy(option).name}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section className="setup-group">
+                  <span className="setup-label">Players</span>
+                  <div className="count-tabs" role="tablist" aria-label="Bot table players">
+                    {playerCountOptions.map((count) => (
+                      <button
+                        key={count}
+                        className={count === botPlayerCount ? "active" : ""}
+                        disabled={busy || isBotTurn}
+                        onClick={() => changeBotPlayerCount(count)}
+                      >
+                        {count}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section className="setup-group">
+                  <span className="setup-label">Bot Strategies</span>
+                  <div className="bot-seat-grid">
+                    {botLineup.map((strategyId, index) => (
+                      <label key={index} className="seat-strategy">
+                        <span>Seat {index + 1}</span>
+                        <select
+                          value={strategyId}
+                          disabled={busy || isBotTurn}
+                          onChange={(event) =>
+                            changeBotStrategy(index, event.target.value as BotStrategyId)
+                          }
+                        >
+                          {strategyOptions.map((strategy) => (
+                            <option key={strategy.id} value={strategy.id}>
+                              {strategy.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            </details>
             <CommandButton
               icon={RefreshCw}
               variant="primary"
               disabled={busy}
-              onClick={() => void startNewGame(difficulty)}
+              onClick={() => {
+                setSetupOpen(false);
+                void startNewGame(difficulty);
+              }}
             >
               New Deal
             </CommandButton>
             <CommandButton
               icon={Users}
               disabled={busy}
-              onClick={() => void startBotGame(4)}
+              onClick={() => {
+                setSetupOpen(false);
+                void startBotGame(botPlayerCount, botLineup);
+              }}
             >
               Bot Table
             </CommandButton>

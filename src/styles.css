@@ -32,7 +32,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -132,6 +133,7 @@ h2 {
 
 .top-actions,
 .difficulty-tabs,
+.count-tabs,
 .command-row,
 .control-stack,
 .score-row,
@@ -153,7 +155,8 @@ h2 {
   background: rgba(4, 7, 10, 0.38);
 }
 
-.difficulty-tabs button {
+.difficulty-tabs button,
+.count-tabs button {
   min-width: 72px;
   height: 34px;
   border-radius: 6px;
@@ -163,12 +166,18 @@ h2 {
   cursor: pointer;
 }
 
-.difficulty-tabs button.active {
+.count-tabs button {
+  min-width: 40px;
+}
+
+.difficulty-tabs button.active,
+.count-tabs button.active {
   background: #324253;
   color: #fff;
 }
 
 .difficulty-tabs button:disabled,
+.count-tabs button:disabled,
 .command-button:disabled,
 .playing-card:disabled {
   cursor: default;
@@ -202,8 +211,91 @@ h2 {
 }
 
 .command-button:not(:disabled):hover,
-.difficulty-tabs button:not(:disabled):hover {
+.difficulty-tabs button:not(:disabled):hover,
+.count-tabs button:not(:disabled):hover {
   filter: brightness(1.08);
+}
+
+.setup-menu {
+  position: relative;
+}
+
+.setup-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f7fbff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.setup-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.setup-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 12px;
+  width: min(560px, calc(100vw - 36px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(17, 24, 31, 0.97);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  z-index: 10;
+}
+
+.setup-group {
+  display: grid;
+  gap: 7px;
+}
+
+.setup-label,
+.seat-strategy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.count-tabs {
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 7, 10, 0.38);
+}
+
+.bot-seat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.seat-strategy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.seat-strategy select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #eef4f8;
+  background: #121a22;
+  padding: 0 10px;
 }
 
 .error-banner {
@@ -729,13 +821,30 @@ h2 {
   }
 
   .top-actions,
-  .difficulty-tabs {
+  .difficulty-tabs,
+  .setup-menu,
+  .setup-menu summary {
     width: 100%;
   }
 
   .difficulty-tabs button,
+  .count-tabs button,
   .top-actions .command-button {
     flex: 1;
+  }
+
+  .setup-panel {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
+
+  .count-tabs {
+    width: 100%;
+  }
+
+  .bot-seat-grid {
+    grid-template-columns: 1fr;
   }
 
   .side-panel {
