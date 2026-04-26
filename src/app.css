@@ -1,0 +1,46 @@
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0a1a0c;
+  color: #e8f5e9;
+  user-select: none;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* Shared HUD button styles */
+.hud-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  transition: filter 0.15s, transform 0.1s;
+}
+.hud-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.hud-btn:active:not(:disabled) { transform: translateY(0); }
+.hud-btn:disabled { opacity: 0.4; cursor: default; }
+
+.hud-btn.pri { background: #1565c0; color: #fff; }
+.hud-btn.suc { background: #2e7d32; color: #fff; }
+.hud-btn.dng { background: #c62828; color: #fff; }
+.hud-btn.wrn { background: #e65100; color: #fff; }
+.hud-btn.sec {
+  background: rgba(255,255,255,0.1);
+  color: #e8f5e9;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
