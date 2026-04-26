@@ -25,8 +25,11 @@ export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Pr
   const [inputCode, setInputCode] = useState("");
   const [err, setErr] = useState("");
   const peerRef = useRef<WebRTCPeer | null>(null);
+  const gameStartedRef = useRef(false);
 
-  useEffect(() => () => { peerRef.current?.close(); }, []);
+  // Only close the peer if we never handed it off to a live game.
+  // Once a game starts the screen unmounts but the peer must stay alive.
+  useEffect(() => () => { if (!gameStartedRef.current) peerRef.current?.close(); }, []);
 
   // ── Host flow ──────────────────────────────────────────────────────────────
 
@@ -41,6 +44,7 @@ export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Pr
       const host = new MultiplayerHost(peer, name, (s) => {
         if (!started) {
           started = true;
+          gameStartedRef.current = true;
           onGame(s, (cmd) => host.dispatch(cmd as never));
         } else {
           onStateUpdate(s);
@@ -86,6 +90,7 @@ export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Pr
       guest.onStateChange((s) => {
         if (!started) {
           started = true;
+          gameStartedRef.current = true;
           onGame(s, (cmd) => guest.dispatch(cmd as never));
         } else {
           onStateUpdate(s);
