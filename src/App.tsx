@@ -1,4 +1,4 @@
-import { Component, useState, useCallback, useRef, type ReactNode } from "react";
+import { Component, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { GameProvider, useGame } from "./application/game.context";
 import { MenuScreen } from "./ui/screens/MenuScreen";
 import { GameScreen } from "./ui/screens/GameScreen";
@@ -27,13 +27,27 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 type Screen = "menu" | "multiplayer";
 
 function AppInner() {
-  const { state: soloState, startGame, dispatch: soloDispatch } = useGame();
+  const { state: soloState, startGame, resetGame, dispatch: soloDispatch } = useGame();
   const [screen, setScreen] = useState<Screen>("menu");
 
   // Multiplayer live state
   const [mpState, setMpState] = useState<GameState | null>(null);
   const [mpNames, setMpNames] = useState<PlayerNames | null>(null);
   const mpDispatchRef = useRef<((cmd: object) => void) | null>(null);
+
+  // Multiplayer rematch coordination
+  const mpSendRematchRef = useRef<(() => void) | null>(null);
+  const [myVoted, setMyVoted] = useState(false);
+  const [opponentVoted, setOpponentVoted] = useState(false);
+
+  // Reset vote state whenever a new game begins (phase leaves "over")
+  useEffect(() => {
+    const phase = (mpState ?? soloState)?.phase;
+    if (phase && phase !== "over") {
+      setMyVoted(false);
+      setOpponentVoted(false);
+    }
+  }, [(mpState ?? soloState)?.phase]);
 
   const handleMpGame = useCallback((
     initialState: GameState,
@@ -44,14 +58,46 @@ function AppInner() {
     setScreen("menu");
   }, []);
 
-  // Hook for MultiplayerScreen to give us live state updates
   const handleMpStateUpdate = useCallback((s: GameState) => {
     setMpState(s);
   }, []);
 
+  const handleRematchReady = useCallback((
+    sendVote: () => void,
+    onOpponentVote: (cb: () => void) => void,
+  ) => {
+    mpSendRematchRef.current = sendVote;
+    onOpponentVote(() => setOpponentVoted(true));
+  }, []);
+
   const activeState = mpState ?? soloState;
+  const isMultiplayer = mpState !== null;
+
   const activeDispatch = (cmd: object) =>
     mpState ? mpDispatchRef.current?.(cmd) : soloDispatch(cmd as Parameters<typeof soloDispatch>[0]);
+
+  function handleRematch() {
+    if (isMultiplayer) {
+      setMyVoted(true);
+      mpSendRematchRef.current?.();
+      // The host will push new state when both have voted;
+      // the guest will also receive new state at that point.
+    } else {
+      startGame(activeState!.difficulty);
+    }
+  }
+
+  function handleBackToMenu() {
+    // Clear all multiplayer state
+    setMpState(null);
+    setMpNames(null);
+    mpDispatchRef.current = null;
+    mpSendRematchRef.current = null;
+    setMyVoted(false);
+    setOpponentVoted(false);
+    // Clear solo game state so the menu renders
+    resetGame();
+  }
 
   if (screen === "multiplayer") {
     return (
@@ -62,6 +108,7 @@ function AppInner() {
         }}
         onStateUpdate={handleMpStateUpdate}
         onNames={setMpNames}
+        onRematchReady={handleRematchReady}
         onBack={() => setScreen("menu")}
       />
     );
@@ -75,12 +122,12 @@ function AppInner() {
     return (
       <GameOverScreen
         state={activeState}
-        onRematch={() => {
-          setMpState(null);
-          setMpNames(null);
-          mpDispatchRef.current = null;
-          startGame(activeState.difficulty);
-        }}
+        isMultiplayer={isMultiplayer}
+        myVoted={myVoted}
+        opponentVoted={opponentVoted}
+        opponentName={mpNames?.opponent}
+        onRematch={handleRematch}
+        onMenu={handleBackToMenu}
       />
     );
   }
