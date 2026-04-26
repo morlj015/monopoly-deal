@@ -963,18 +963,18 @@ export class GameAggregate extends AggregateRoot {
     if (cmd.triggerSeq !== pr.triggerSeq) err("Debt trigger seq mismatch");
 
     const p = this.s.players[cmd.issuedBy];
+    let paid = 0;
     for (const c of cmd.bankCards) {
-      if (!p.bank.some((b) => b.id === c.id)) err(`Bank card ${c.id} not yours`);
+      const serverCard = p.bank.find((b) => b.id === c.id);
+      if (!serverCard) err(`Bank card ${c.id} not yours`);
+      paid += serverCard.value;
     }
+    const allProperties = (Object.values(p.sets) as PropertyCard[][]).flat();
     for (const c of cmd.propertyCards) {
-      const found = (Object.values(p.sets) as PropertyCard[][])
-        .flat()
-        .find((x) => x.id === c.id);
-      if (!found) err(`Property ${c.id} not in your sets`);
+      const serverCard = allProperties.find((x) => x.id === c.id);
+      if (!serverCard) err(`Property ${c.id} not in your sets`);
+      paid += serverCard.value;
     }
-    const paid =
-      cmd.bankCards.reduce((s, c) => s + c.value, 0) +
-      cmd.propertyCards.reduce((s, c) => s + c.value, 0);
     const owns = bankTotal(p.bank) + setTotal(p.sets);
     if (paid < pr.amountOwed && paid < owns) {
       err("Must pay the full amount (or everything you have if broke)");

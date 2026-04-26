@@ -88,7 +88,14 @@ export class MultiplayerHost {
     );
 
     peer.onMessage((raw) => {
-      const msg: Msg = JSON.parse(raw);
+      let msg: Msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        console.warn("Received malformed message from peer, ignoring");
+        return;
+      }
+      if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "ready") {
         const guestName = msg.name || "Guest";
         this.onNamesResolvedCb?.({ you: hostName, opponent: guestName });
@@ -160,7 +167,14 @@ export class MultiplayerGuest {
 
   constructor(private readonly peer: WebRTCPeer, guestName: string) {
     peer.onMessage((raw) => {
-      const msg: Msg = JSON.parse(raw);
+      let msg: Msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        console.warn("Received malformed message from peer, ignoring");
+        return;
+      }
+      if (!msg || typeof msg.type !== "string") return;
       if (msg.type === "state") {
         if (!this.namesResolved) {
           this.namesResolved = true;
