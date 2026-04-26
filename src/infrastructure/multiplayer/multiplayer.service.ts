@@ -18,7 +18,8 @@ export interface PlayerNames { you: string; opponent: string; }
 type Msg =
   | { type: "state"; state: GameState; hostName: string }
   | { type: "cmd"; cmd: Partial<GameCommand> & { type: string } }
-  | { type: "ready"; name: string };
+  | { type: "ready"; name: string }
+  | { type: "rematch-vote" };
 
 function flipState(s: GameState): GameState {
   return {
@@ -68,6 +69,9 @@ export class MultiplayerHost {
   private svc: GameService;
   private gameId = uuid();
   private onNamesResolvedCb: ((names: PlayerNames) => void) | null = null;
+  private onOpponentVoteCb: (() => void) | null = null;
+  private hostVoted = false;
+  private guestVoted = false;
 
   constructor(
     private readonly peer: WebRTCPeer,
@@ -95,11 +99,32 @@ export class MultiplayerHost {
         } else {
           this.svc.dispatch(cmd).catch(console.error);
         }
+      } else if (msg.type === "rematch-vote") {
+        this.guestVoted = true;
+        this.onOpponentVoteCb?.();
+        if (this.hostVoted) this.startRematch();
       }
     });
   }
 
   onNamesResolved(cb: (names: PlayerNames) => void) { this.onNamesResolvedCb = cb; }
+  onOpponentVote(cb: () => void) { this.onOpponentVoteCb = cb; }
+
+  sendRematchVote() {
+    this.hostVoted = true;
+    // Notify guest that host also wants a rematch
+    if (this.peer.connected) {
+      this.peer.send(JSON.stringify({ type: "rematch-vote" } satisfies Msg));
+    }
+    if (this.guestVoted) this.startRematch();
+  }
+
+  private startRematch() {
+    this.hostVoted = false;
+    this.guestVoted = false;
+    this.gameId = uuid();
+    this.svc.startNewGame(this.gameId, "medium").catch(console.error);
+  }
 
   async openRoom(): Promise<string> { return this.peer.host(); }
 
@@ -130,6 +155,7 @@ export class MultiplayerHost {
 export class MultiplayerGuest {
   private onStateChangeCb: ((s: GameState) => void) | null = null;
   private onNamesResolvedCb: ((names: PlayerNames) => void) | null = null;
+  private onOpponentVoteCb: (() => void) | null = null;
   private namesResolved = false;
 
   constructor(private readonly peer: WebRTCPeer, guestName: string) {
@@ -141,6 +167,9 @@ export class MultiplayerGuest {
           this.onNamesResolvedCb?.({ you: guestName, opponent: msg.hostName || "Host" });
         }
         this.onStateChangeCb?.(msg.state);
+      } else if (msg.type === "rematch-vote") {
+        // Host has also voted — notify UI
+        this.onOpponentVoteCb?.();
       }
     });
 
@@ -152,6 +181,12 @@ export class MultiplayerGuest {
 
   onNamesResolved(cb: (names: PlayerNames) => void) { this.onNamesResolvedCb = cb; }
   onStateChange(cb: (s: GameState) => void) { this.onStateChangeCb = cb; }
+  onOpponentVote(cb: () => void) { this.onOpponentVoteCb = cb; }
+
+  sendRematchVote() {
+    const msg: Msg = { type: "rematch-vote" };
+    this.peer.send(JSON.stringify(msg));
+  }
 
   dispatch(cmd: Omit<GameCommand, "gameId" | "issuedBy"> & { type: string }) {
     const msg: Msg = { type: "cmd", cmd: { ...cmd, issuedBy: "player" } };

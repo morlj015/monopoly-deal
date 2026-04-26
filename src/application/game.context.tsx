@@ -19,6 +19,7 @@ type CmdPartial = DistributiveOmit<GameCommand, "gameId" | "issuedBy">;
 interface GameCtx {
   state: GameState | null;
   startGame: (difficulty: Difficulty) => Promise<void>;
+  resetGame: () => void;
   dispatch: (cmd: CmdPartial) => Promise<void>;
 }
 
@@ -57,8 +58,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [service]
   );
 
+  const resetGame = useCallback(() => setState(null), []);
+
   return (
-    <Ctx.Provider value={{ state, startGame, dispatch }}>
+    <Ctx.Provider value={{ state, startGame, resetGame, dispatch }}>
       {children}
     </Ctx.Provider>
   );

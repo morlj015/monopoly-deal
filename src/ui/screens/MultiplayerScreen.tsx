@@ -7,6 +7,7 @@ interface Props {
   onGame: (state: GameState, dispatch: (cmd: object) => void) => void;
   onStateUpdate: (state: GameState) => void;
   onNames: (names: PlayerNames) => void;
+  onRematchReady: (sendVote: () => void, onOpponentVote: (cb: () => void) => void) => void;
   onBack: () => void;
 }
 
@@ -18,7 +19,7 @@ type Step =
   | "guest-joining"
   | "error";
 
-export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Props) {
+export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onRematchReady, onBack }: Props) {
   const [step, setStep] = useState<Step>("choose");
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState("");
@@ -46,6 +47,10 @@ export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Pr
           started = true;
           gameStartedRef.current = true;
           onGame(s, (cmd) => host.dispatch(cmd as never));
+          onRematchReady(
+            () => host.sendRematchVote(),
+            (cb) => host.onOpponentVote(cb),
+          );
         } else {
           onStateUpdate(s);
         }
@@ -92,6 +97,10 @@ export function MultiplayerScreen({ onGame, onStateUpdate, onNames, onBack }: Pr
           started = true;
           gameStartedRef.current = true;
           onGame(s, (cmd) => guest.dispatch(cmd as never));
+          onRematchReady(
+            () => guest.sendRematchVote(),
+            (cb) => guest.onOpponentVote(cb),
+          );
         } else {
           onStateUpdate(s);
         }
