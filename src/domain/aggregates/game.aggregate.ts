@@ -313,6 +313,14 @@ function applyEvent(state: GameState, event: GameEvent): GameState {
       s.phase = phaseAfterPlay(s);
       break;
     }
+    case "PropertyMoved": {
+      const p = s.players[event.player];
+      p.sets[event.fromColor] = p.sets[event.fromColor]?.filter(c => c.id !== event.card.id);
+      if ((p.sets[event.fromColor]?.length ?? 0) === 0) delete p.sets[event.fromColor];
+      const moved = { ...event.card, color: event.toColor };
+      p.sets[event.toColor] = [...(p.sets[event.toColor] ?? []), moved];
+      break;
+    }
     case "TurnEnded": {
       break;
     }
@@ -422,6 +430,7 @@ export class GameAggregate extends AggregateRoot {
       case "DrawCards":         return this.cmdDrawCards(cmd);
       case "BankCard":          return this.cmdBankCard(cmd);
       case "PlayProperty":      return this.cmdPlayProperty(cmd);
+      case "MoveProperty":      return this.cmdMoveProperty(cmd);
       case "PlayPassGo":        return this.cmdPlayPassGo(cmd);
       case "PlayDoubleRent":    return this.cmdPlayDoubleRent(cmd);
       case "PlayRent":          return this.cmdPlayRent(cmd);
@@ -529,6 +538,31 @@ export class GameAggregate extends AggregateRoot {
         winner: cmd.issuedBy,
       });
     }
+  }
+
+  private cmdMoveProperty(cmd: GameCommand & { type: "MoveProperty" }): void {
+    this.phase("action");
+    this.myTurn(cmd.issuedBy);
+    const p = this.s.players[cmd.issuedBy];
+    const card = (Object.values(p.sets) as PropertyCard[][])
+      .flat()
+      .find(c => c.id === cmd.cardId);
+    if (!card) err("Card not in your sets");
+    const validColors = card.colors ?? [card.color];
+    if (!validColors.includes(cmd.toColor)) err("Card cannot be placed in that colour");
+    if (card.color === cmd.toColor) err("Card is already in that colour set");
+    if (isComplete(p.sets, card.color)) err("Cannot move a card from a complete set");
+    if ((p.sets[cmd.toColor]?.length ?? 0) >= SET_SIZES[cmd.toColor]) err("Destination set is already complete");
+    this.raise({
+      type: "PropertyMoved",
+      seq: this.nextSeq(),
+      gameId: this.gid,
+      ts: ts(),
+      player: cmd.issuedBy,
+      card,
+      fromColor: card.color,
+      toColor: cmd.toColor,
+    });
   }
 
   private cmdPlayPassGo(cmd: GameCommand & { type: "PlayPassGo" }): void {

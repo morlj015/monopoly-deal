@@ -4,7 +4,7 @@ import type { GameState, PlayerId } from "../../domain/types/game.types";
 import type { PropertyColor } from "../../domain/types/card.types";
 import { buildCardTexture, buildFaceDownTexture } from "./card-texture";
 import { PROP_COLOR } from "../components/CardFace";
-import { isComplete } from "../../domain/rules/set.rules";
+import { isComplete, SET_SIZES } from "../../domain/rules/set.rules";
 
 const COLOR_ORDER: PropertyColor[] = [
   "brown", "lightblue", "pink", "orange",
@@ -188,18 +188,34 @@ function addPropertyZone(
     const cards = player.sets[color] ?? [];
     const complete = isComplete(player.sets, color);
     const hasHotel = !!player.hotels[color];
+    const setSize = SET_SIZES[color];
     const cx = startX + ci * 0.78;
 
-    // Color header strip
-    const headerGeo = new THREE.PlaneGeometry(0.72, 0.12);
-    const headerMat = new THREE.MeshStandardMaterial({
-      color: PROP_COLOR[color],
-      roughness: 0.7,
-      ...(complete ? { emissive: new THREE.Color(PROP_COLOR[color]), emissiveIntensity: 0.3 } : {}),
-    });
+    // Color header with X/Y progress label
+    const hc = document.createElement("canvas");
+    hc.width = 256; hc.height = 96;
+    const hCtx = hc.getContext("2d")!;
+    hCtx.fillStyle = PROP_COLOR[color];
+    hCtx.fillRect(0, 0, 256, 96);
+    if (complete) {
+      hCtx.fillStyle = "rgba(255,255,255,0.18)";
+      hCtx.fillRect(0, 0, 256, 96);
+    }
+    hCtx.fillStyle = "#fff";
+    hCtx.font = "bold 46px monospace";
+    hCtx.textAlign = "center";
+    hCtx.textBaseline = "middle";
+    hCtx.fillText(`${cards.length}/${setSize}`, 128, 58);
+    hCtx.font = "bold 16px sans-serif";
+    hCtx.fillStyle = "rgba(255,255,255,0.75)";
+    hCtx.fillText(color.toUpperCase(), 128, 22);
+    const headerTex = new THREE.CanvasTexture(hc);
+    const headerGeo = new THREE.PlaneGeometry(0.72, 0.22);
+    const headerMat = new THREE.MeshBasicMaterial({ map: headerTex, transparent: true, depthWrite: false });
     const header = new THREE.Mesh(headerGeo, headerMat);
     header.rotation.x = -Math.PI / 2;
-    header.position.set(cx, 0.001, zBase + (flipped ? -0.52 : 0.52));
+    header.rotation.z = yaw;
+    header.position.set(cx, 0.003, zBase + (flipped ? -0.52 : 0.52));
     scene.add(header);
 
     // Upgrade indicator
@@ -207,20 +223,23 @@ function addPropertyZone(
       addRing(scene, cx, zBase + (flipped ? -0.52 : 0.52), 0.04, 0.06, hasHotel ? "#e53935" : "#43a047", 1);
     }
 
-    // Card stack
+    // Card stack — fanned with generous spread so names are visible
+    const spread = Math.min(0.9, 2.2 / Math.max(cards.length, 1));
+    const fanStep = cards.length > 1 ? 0.025 : 0;
+
     cards.forEach((card, i) => {
       const tex = buildCardTexture(card);
       const backTex = buildFaceDownTexture();
-      const spread = Math.min(0.75, 1.8 / Math.max(cards.length, 1));
       const yPos = 0.002 + i * 0.002;
       const zPos = zBase + i * spread * (flipped ? -1 : 1);
+      const fanAngle = (i - (cards.length - 1) / 2) * fanStep * (flipped ? -1 : 1);
       const geo = new THREE.BoxGeometry(0.63, 0.88, CARD_THICKNESS);
       const edge = new THREE.MeshStandardMaterial({ color: CARD_EDGE_COLOR, roughness: 0.5 });
       const face = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.35 });
       const back = new THREE.MeshStandardMaterial({ map: backTex, roughness: 0.35 });
       const mesh = new THREE.Mesh(geo, [edge, edge, edge, edge, face, back]);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.rotation.z = yaw;
+      mesh.rotation.z = yaw + fanAngle;
       mesh.position.set(cx, yPos + CARD_THICKNESS / 2, zPos);
       mesh.castShadow = true;
       mesh.receiveShadow = true;

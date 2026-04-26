@@ -149,6 +149,14 @@ export interface CardSwapped extends Base {
   readonly given: PropertyCard;
 }
 
+export interface PropertyMoved extends Base {
+  readonly type: "PropertyMoved";
+  readonly player: PlayerId;
+  readonly card: PropertyCard;
+  readonly fromColor: PropertyColor;
+  readonly toColor: PropertyColor;
+}
+
 export interface TurnEnded extends Base {
   readonly type: "TurnEnded";
   readonly player: PlayerId;
@@ -184,6 +192,7 @@ export type GameEvent =
   | PropertyStolen
   | SetStolen
   | CardSwapped
+  | PropertyMoved
   | TurnEnded
   | CardsDiscarded
   | GameEnded;

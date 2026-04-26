@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Card, PropertyColor, PropertyCard } from "../../domain/types/card.types";
 import type { GameState } from "../../domain/types/game.types";
 import { CardFace } from "../components/CardFace";
-import { isComplete } from "../../domain/rules/set.rules";
+import { isComplete, SET_SIZES } from "../../domain/rules/set.rules";
 import { PROP_COLOR } from "../components/CardFace";
 
 interface Props {
@@ -17,7 +17,9 @@ type PickStep =
   | "forced-own-pick"
   | "dealbreaker-pick"
   | "house-pick"
-  | "hotel-pick";
+  | "hotel-pick"
+  | "rearrange-pick"
+  | "rearrange-dest";
 
 const DRAG_THRESHOLD = 8;
 
@@ -27,6 +29,7 @@ export function PlayerHand({ state, dispatch }: Props) {
   const [pickStep, setPickStep] = useState<PickStep>(null);
   const [forcedAiCardId, setForcedAiCardId] = useState<string | null>(null);
   const [discardIds, setDiscardIds] = useState<string[]>([]);
+  const [rearrangeCardId, setRearrangeCardId] = useState<string | null>(null);
 
   // Drag state
   const pointerRef = useRef<{ card: Card; startX: number; startY: number } | null>(null);
@@ -51,6 +54,7 @@ export function PlayerHand({ state, dispatch }: Props) {
     setTargetColor(null);
     setPickStep(null);
     setForcedAiCardId(null);
+    setRearrangeCardId(null);
   }
 
   // ── Discard mode ──────────────────────────────────────────────────────────────
@@ -258,6 +262,21 @@ export function PlayerHand({ state, dispatch }: Props) {
     reset();
   }
 
+  function startRearrange() {
+    setPickStep("rearrange-pick");
+  }
+
+  function pickRearrangeCard(card: PropertyCard) {
+    setRearrangeCardId(card.id);
+    setPickStep("rearrange-dest");
+  }
+
+  function pickRearrangeDest(color: PropertyColor) {
+    if (!rearrangeCardId) return;
+    dispatch({ type: "MoveProperty", cardId: rearrangeCardId, toColor: color });
+    reset();
+  }
+
   // ── Derived state ─────────────────────────────────────────────────────────────
 
   const isRentColorPick = selected?.kind === "rent" && targetColor !== null;
@@ -280,6 +299,22 @@ export function PlayerHand({ state, dispatch }: Props) {
   const ownHouseColors = (Object.keys(player.sets) as PropertyColor[])
     .filter(c => isComplete(player.sets, c) && player.houses[c] && !player.hotels[c]);
 
+  // Wild cards in incomplete sets that can be rearranged
+  const movableWildCards: PropertyCard[] = (Object.entries(player.sets) as [PropertyColor, PropertyCard[]][])
+    .filter(([color]) => !isComplete(player.sets, color))
+    .flatMap(([, cards]) => cards.filter(c => (c.colors?.length ?? 1) > 1));
+
+  // Valid destination colors for the selected rearrange card
+  const rearrangeCard = rearrangeCardId
+    ? (Object.values(player.sets) as PropertyCard[][]).flat().find(c => c.id === rearrangeCardId)
+    : null;
+  const rearrangeDestColors: PropertyColor[] = rearrangeCard
+    ? (rearrangeCard.colors ?? [rearrangeCard.color]).filter(col =>
+        col !== rearrangeCard.color &&
+        (player.sets[col]?.length ?? 0) < (SET_SIZES[col] ?? 99)
+      )
+    : [];
+
   // ── Discard mode ──────────────────────────────────────────────────────────────
 
   if (isDiscard) {
@@ -297,49 +332,6 @@ export function PlayerHand({ state, dispatch }: Props) {
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-
-  // ── Picker sub-components ─────────────────────────────────────────────────────
-
-  function PropertyPicker({ cards, onPick, label }: { cards: PropertyCard[]; onPick: (c: PropertyCard) => void; label: string }) {
-    return (
-      <div style={{ padding: "8px 14px 0" }}>
-        <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, marginRight: 8 }}>{label}</span>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-          {cards.map(c => (
-            <div key={c.id} onClick={() => onPick(c)}
-              style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <CardFace card={c} width={52} />
-              <span style={{
-                fontSize: 10, fontWeight: 700, textTransform: "capitalize",
-                background: PROP_COLOR[c.color],
-                color: c.color === "yellow" ? "#212121" : "#fff",
-                padding: "2px 7px", borderRadius: 4, whiteSpace: "nowrap",
-              }}>{c.color}</span>
-              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", textAlign: "center", maxWidth: 58 }}>{c.name}</span>
-            </div>
-          ))}
-          {cards.length === 0 && <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>No valid targets</span>}
-        </div>
-        <button className="hud-btn sec" style={{ marginTop: 8 }} onClick={reset}>✕ Cancel</button>
-      </div>
-    );
-  }
-
-  function ColorPicker({ colors, onPick, label }: { colors: PropertyColor[]; onPick: (c: PropertyColor) => void; label: string }) {
-    return (
-      <div style={{ padding: "8px 14px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{label}</span>
-        {colors.map(col => (
-          <button key={col} className="hud-btn pri" onClick={() => onPick(col)}
-            style={{ textTransform: "capitalize", background: PROP_COLOR[col], color: col === "yellow" ? "#212121" : "#fff" }}>
-            {col}
-          </button>
-        ))}
-        {colors.length === 0 && <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>No valid targets</span>}
-        <button className="hud-btn sec" onClick={reset}>✕ Cancel</button>
       </div>
     );
   }
@@ -409,12 +401,14 @@ export function PlayerHand({ state, dispatch }: Props) {
       <div ref={handRef} style={{ flexShrink: 0, background: "rgba(5,20,8,0.92)", borderTop: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}>
 
         {/* Targeting overlays */}
-        {pickStep === "sly-target"     && <PropertyPicker cards={aiNonCompleteProps}  onPick={pickSlyTarget}      label="Pick opponent's property to steal:" />}
-        {pickStep === "forced-ai-pick" && <PropertyPicker cards={aiNonCompleteProps}  onPick={pickForcedAiCard}   label="Pick opponent's property to take:" />}
-        {pickStep === "forced-own-pick"&& <PropertyPicker cards={ownNonCompleteProps} onPick={pickForcedOwnCard}  label="Pick your property to give in exchange:" />}
-        {pickStep === "dealbreaker-pick"&&<ColorPicker    colors={aiCompleteColors}   onPick={pickDealBreakerColor} label="Pick opponent's complete set to steal:" />}
-        {pickStep === "house-pick"     && <ColorPicker    colors={ownCompleteColors}  onPick={pickHouseColor}     label="Add house to which set?" />}
-        {pickStep === "hotel-pick"     && <ColorPicker    colors={ownHouseColors}     onPick={pickHotelColor}     label="Add hotel to which set?" />}
+        {pickStep === "sly-target"     && <PropertyPicker cards={aiNonCompleteProps}  onPick={pickSlyTarget}      label="Pick opponent's property to steal:" onCancel={reset} />}
+        {pickStep === "forced-ai-pick" && <PropertyPicker cards={aiNonCompleteProps}  onPick={pickForcedAiCard}   label="Pick opponent's property to take:" onCancel={reset} />}
+        {pickStep === "forced-own-pick"&& <PropertyPicker cards={ownNonCompleteProps} onPick={pickForcedOwnCard}  label="Pick your property to give in exchange:" onCancel={reset} />}
+        {pickStep === "dealbreaker-pick"&&<ColorPicker    colors={aiCompleteColors}   onPick={pickDealBreakerColor} label="Pick opponent's complete set to steal:" onCancel={reset} />}
+        {pickStep === "house-pick"     && <ColorPicker    colors={ownCompleteColors}  onPick={pickHouseColor}     label="Add house to which set?" onCancel={reset} />}
+        {pickStep === "hotel-pick"     && <ColorPicker    colors={ownHouseColors}     onPick={pickHotelColor}     label="Add hotel to which set?" onCancel={reset} />}
+        {pickStep === "rearrange-pick" && <PropertyPicker cards={movableWildCards}    onPick={pickRearrangeCard}  label="Pick your wild card to move:" onCancel={reset} />}
+        {pickStep === "rearrange-dest" && <ColorPicker    colors={rearrangeDestColors} onPick={pickRearrangeDest} label="Move to which colour set?" onCancel={reset} />}
 
         {/* Standard action bar */}
         {selected && active && !pickStep && (
@@ -459,6 +453,15 @@ export function PlayerHand({ state, dispatch }: Props) {
           </div>
         )}
 
+        {/* Rearrange button — shown when player has moveable wild cards and nothing selected */}
+        {active && !selected && !pickStep && movableWildCards.length > 0 && (
+          <div style={{ padding: "6px 14px 0" }}>
+            <button className="hud-btn sec" onClick={startRearrange} style={{ fontSize: 11, padding: "5px 12px" }}>
+              ⇄ Rearrange wild cards
+            </button>
+          </div>
+        )}
+
         {/* Hint when dragging is possible */}
         {active && !selected && !pickStep && !ghostCard && (
           <div style={{ padding: "6px 14px 0", fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
@@ -492,5 +495,62 @@ export function PlayerHand({ state, dispatch }: Props) {
         </div>
       </div>
     </>
+  );
+}
+
+// ── Picker sub-components (defined outside PlayerHand to keep stable identity) ──
+
+function PropertyPicker({ cards, onPick, label, onCancel }: {
+  cards: PropertyCard[];
+  onPick: (c: PropertyCard) => void;
+  label: string;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ padding: "8px 14px 0" }}>
+      <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, marginRight: 8 }}>{label}</span>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+        {cards.map(c => (
+          <div
+            key={c.id}
+            onPointerDown={e => { e.stopPropagation(); onPick(c); }}
+            style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+          >
+            <CardFace card={c} width={52} />
+            <span style={{
+              fontSize: 10, fontWeight: 700, textTransform: "capitalize",
+              background: PROP_COLOR[c.color],
+              color: c.color === "yellow" ? "#212121" : "#fff",
+              padding: "2px 7px", borderRadius: 4, whiteSpace: "nowrap",
+            }}>{c.color}</span>
+            <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", textAlign: "center", maxWidth: 58 }}>{c.name}</span>
+          </div>
+        ))}
+        {cards.length === 0 && <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>No valid targets</span>}
+      </div>
+      <button className="hud-btn sec" style={{ marginTop: 8 }} onPointerDown={e => { e.stopPropagation(); onCancel(); }}>✕ Cancel</button>
+    </div>
+  );
+}
+
+function ColorPicker({ colors, onPick, label, onCancel }: {
+  colors: PropertyColor[];
+  onPick: (c: PropertyColor) => void;
+  label: string;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ padding: "8px 14px 0", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>{label}</span>
+      {colors.map(col => (
+        <button key={col} className="hud-btn pri"
+          onPointerDown={e => { e.stopPropagation(); onPick(col); }}
+          style={{ textTransform: "capitalize", background: PROP_COLOR[col], color: col === "yellow" ? "#212121" : "#fff" }}>
+          {col}
+        </button>
+      ))}
+      {colors.length === 0 && <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>No valid targets</span>}
+      <button className="hud-btn sec" onPointerDown={e => { e.stopPropagation(); onCancel(); }}>✕ Cancel</button>
+    </div>
   );
 }

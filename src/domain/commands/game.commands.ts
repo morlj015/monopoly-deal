@@ -112,6 +112,12 @@ export interface DiscardCards extends Base {
   readonly cardIds: string[];
 }
 
+export interface MoveProperty extends Base {
+  readonly type: "MoveProperty";
+  readonly cardId: string;
+  readonly toColor: PropertyColor;
+}
+
 export interface EndTurn extends Base {
   readonly type: "EndTurn";
 }
@@ -121,6 +127,7 @@ export type GameCommand =
   | DrawCards
   | BankCard
   | PlayProperty
+  | MoveProperty
   | PlayPassGo
   | PlayDoubleRent
   | PlayRent
