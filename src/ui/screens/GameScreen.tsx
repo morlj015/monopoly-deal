@@ -5,7 +5,6 @@ import { PlayerHand } from "../hud/PlayerHand";
 import { TurnControls } from "../hud/TurnControls";
 import { ReactionPanel } from "../hud/ReactionPanel";
 import { BottomActions } from "../hud/BottomActions";
-import { PlayerSetsPanel } from "../hud/PlayerSetsPanel";
 import { HowToPlayOverlay } from "../hud/HowToPlayOverlay";
 
 interface Props {
@@ -28,9 +27,6 @@ export function GameScreen({ state, dispatch, names }: Props) {
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <TableScene state={state} names={names} />
       </div>
-
-      {/* Property sets panel — sits between table and hand */}
-      <PlayerSetsPanel state={state} />
 
       {/* Bottom HUD */}
       <div style={{ flexShrink: 0, zIndex: 10 }}>
