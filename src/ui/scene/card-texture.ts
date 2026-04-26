@@ -25,10 +25,12 @@ const ACTION_STYLE: Record<string, { bg: string; fg: string; emoji: string }> = 
 };
 
 export function buildCardTexture(card: Card): THREE.CanvasTexture {
+  // Canvas is 2× the logical size for crisp rendering in the 3D scene
   const W = 148, H = 208;
   const cv = document.createElement("canvas");
-  cv.width = W; cv.height = H;
+  cv.width = W * 2; cv.height = H * 2;
   const ctx = cv.getContext("2d")!;
+  ctx.scale(2, 2);
 
   // White card with rounded rect
   ctx.fillStyle = "#ffffff";
@@ -200,8 +202,9 @@ export function buildCardTexture(card: Card): THREE.CanvasTexture {
 export function buildFaceDownTexture(): THREE.CanvasTexture {
   const W = 148, H = 208;
   const cv = document.createElement("canvas");
-  cv.width = W; cv.height = H;
+  cv.width = W * 2; cv.height = H * 2;
   const ctx = cv.getContext("2d")!;
+  ctx.scale(2, 2);;
   ctx.fillStyle = "#1a237e";
   roundRect(ctx, 0, 0, W, H, 10);
   ctx.fill();

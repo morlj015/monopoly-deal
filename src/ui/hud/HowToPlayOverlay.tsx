@@ -6,42 +6,67 @@ export function HowToPlayOverlay({ onClose }: Props) {
   return (
     <div style={styles.backdrop}>
       <div style={styles.modal}>
-        <div style={styles.title}>How to Play</div>
-        <div style={styles.subtitle}>Monopoly Deal</div>
+        <div style={styles.header}>
+          <div>
+            <div style={styles.title}>How to Play</div>
+            <div style={styles.subtitle}>Monopoly Deal</div>
+          </div>
+          <button onClick={onClose} style={styles.closeBtn}>✕</button>
+        </div>
 
-        <div style={styles.sections}>
-          <Section heading="Goal">
-            Be the first player to collect <strong>3 complete property sets</strong> of different colours.
-          </Section>
+        <div style={styles.body}>
+          {/* Left column */}
+          <div style={styles.col}>
+            <Section heading="Goal">
+              Be first to collect <strong>3 complete property sets</strong> of different colours.
+            </Section>
 
-          <Section heading="Each Turn">
-            <ol style={styles.ol}>
-              <li><strong>Draw 2 cards</strong> from the deck.</li>
-              <li><strong>Play up to 3 cards</strong> — or pass if you don't want to play any.</li>
-              <li>If you have more than <strong>7 cards</strong> in hand at the end of your turn, discard down to 7.</li>
-            </ol>
-          </Section>
+            <Section heading="Each Turn">
+              <ol style={styles.ol}>
+                <li><strong>Draw 2 cards</strong> from the deck.</li>
+                <li><strong>Play up to 3 cards</strong> — or pass.</li>
+                <li>Discard to <strong>7 cards</strong> at end of turn.</li>
+              </ol>
+            </Section>
 
-          <Section heading="Playing Cards">
-            <Row icon="🏠" label="Property" desc="Place face-up in your property area." />
-            <Row icon="💵" label="Money / Action card" desc="Bank it face-up for its dollar value." />
-            <Row icon="⚡" label="Action card" desc="Play the effect immediately." />
-          </Section>
+            <Section heading="Playing Cards">
+              <Row icon="🏠" label="Property" desc="Place in your property area." />
+              <Row icon="💵" label="Money / Action" desc="Bank it for its dollar value." />
+              <Row icon="⚡" label="Action" desc="Play the effect immediately." />
+            </Section>
 
-          <Section heading="Key Action Cards">
-            <Row icon="🎲" label="Pass Go" desc="Draw 2 extra cards." />
-            <Row icon="💰" label="Debt Collector" desc="Collect $5M from any player." />
-            <Row icon="🎂" label="It's My Birthday" desc="Collect $2M from every player." />
-            <Row icon="🕵️" label="Sly Deal" desc="Steal one property from an incomplete set." />
-            <Row icon="🔄" label="Forced Deal" desc="Swap one of your properties for one of theirs." />
-            <Row icon="💥" label="Deal Breaker" desc="Steal a complete property set." />
-            <Row icon="🏠" label="House / Hotel" desc="Add to a complete set to increase its rent." />
-            <Row icon="🚫" label="Just Say No!" desc="Cancel any action played against you." />
-          </Section>
+            <Section heading="Complete Sets">
+              <div style={styles.sets}>
+                <SetBadge color="#6d4c41" label="Brown" n={2} />
+                <SetBadge color="#29b6f6" label="L.Blue" n={3} />
+                <SetBadge color="#ec407a" label="Pink" n={3} />
+                <SetBadge color="#ff7043" label="Orange" n={3} />
+                <SetBadge color="#e53935" label="Red" n={3} />
+                <SetBadge color="#fdd835" label="Yellow" n={3} textDark />
+                <SetBadge color="#43a047" label="Green" n={3} />
+                <SetBadge color="#1565c0" label="D.Blue" n={2} />
+                <SetBadge color="#37474f" label="Cafe" n={4} />
+                <SetBadge color="#78909c" label="Utility" n={2} />
+              </div>
+            </Section>
+          </div>
 
-          <Section heading="Complete Sets">
-            Brown&nbsp;2 · Light Blue&nbsp;3 · Pink&nbsp;3 · Orange&nbsp;3 · Red&nbsp;3 · Yellow&nbsp;3 · Green&nbsp;3 · Dark Blue&nbsp;2 · Cafe&nbsp;4 · Utility&nbsp;2
-          </Section>
+          {/* Right column */}
+          <div style={styles.col}>
+            <Section heading="Key Action Cards">
+              <div style={styles.actionGrid}>
+                <Row icon="🎲" label="Pass Go" desc="Draw 2 extra cards." />
+                <Row icon="💰" label="Debt Collector" desc="Collect $5M from any player." />
+                <Row icon="🎂" label="It's My Birthday" desc="Collect $2M from everyone." />
+                <Row icon="🕵️" label="Sly Deal" desc="Steal one property from an incomplete set." />
+                <Row icon="🔄" label="Forced Deal" desc="Swap one of your props for one of theirs." />
+                <Row icon="💥" label="Deal Breaker" desc="Steal a complete property set." />
+                <Row icon="🏠" label="House / Hotel" desc="Add to a complete set to boost rent." />
+                <Row icon="🚫" label="Just Say No!" desc="Cancel any action played against you." />
+                <Row icon="✖️" label="Double the Rent" desc="Double your next rent charge." />
+              </div>
+            </Section>
+          </div>
         </div>
 
         <button onClick={onClose} style={styles.btn}>
@@ -54,11 +79,11 @@ export function HowToPlayOverlay({ onClose }: Props) {
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", color: "#81c784", marginBottom: 6 }}>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", color: "#81c784", marginBottom: 4 }}>
         {heading}
       </div>
-      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.82)", lineHeight: 1.55 }}>
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.82)", lineHeight: 1.5 }}>
         {children}
       </div>
     </div>
@@ -67,13 +92,34 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function Row({ icon, label, desc }: { icon: string; label: string; desc: string }) {
   return (
-    <div style={{ display: "flex", gap: 8, marginBottom: 4, alignItems: "flex-start" }}>
-      <span style={{ width: 20, flexShrink: 0, fontSize: 14 }}>{icon}</span>
-      <span>
+    <div style={{ display: "flex", gap: 6, marginBottom: 3, alignItems: "flex-start" }}>
+      <span style={{ width: 18, flexShrink: 0, fontSize: 13 }}>{icon}</span>
+      <span style={{ fontSize: 12 }}>
         <strong style={{ color: "#fff" }}>{label}</strong>
         {" — "}
         {desc}
       </span>
+    </div>
+  );
+}
+
+function SetBadge({ color, label, n, textDark }: { color: string; label: string; n: number; textDark?: boolean }) {
+  return (
+    <div style={{
+      background: color,
+      color: textDark ? "#212121" : "#fff",
+      borderRadius: 5,
+      padding: "3px 6px",
+      fontSize: 10,
+      fontWeight: 700,
+      whiteSpace: "nowrap",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 1,
+    }}>
+      <span>{label}</span>
+      <span style={{ fontSize: 9, opacity: 0.85 }}>×{n}</span>
     </div>
   );
 }
@@ -88,52 +134,88 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
+    padding: 12,
   },
   modal: {
     background: "rgba(10,18,12,0.97)",
     border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: 20,
-    padding: "28px 30px 24px",
+    borderRadius: 18,
+    padding: "16px 20px 14px",
     width: "100%",
-    maxWidth: 480,
-    maxHeight: "90vh",
-    overflowY: "auto" as const,
+    maxWidth: 640,
+    maxHeight: "96vh",
     display: "flex",
     flexDirection: "column" as const,
-    gap: 4,
+    gap: 8,
     color: "#e8f5e9",
     fontFamily: "'Segoe UI', system-ui, sans-serif",
+    overflow: "hidden",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    flexShrink: 0,
   },
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: 900,
     letterSpacing: -0.5,
     color: "#fff",
+    lineHeight: 1.1,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: "rgba(255,255,255,0.4)",
-    marginBottom: 16,
   },
-  sections: {
+  closeBtn: {
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.15)",
+    color: "#fff",
+    borderRadius: 8,
+    padding: "4px 10px",
+    cursor: "pointer",
+    fontSize: 14,
+    flexShrink: 0,
+  },
+  body: {
+    display: "flex",
+    gap: 20,
     flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  col: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
   },
   ol: {
-    margin: "4px 0",
-    paddingLeft: 18,
+    margin: "2px 0",
+    paddingLeft: 16,
     display: "flex",
     flexDirection: "column" as const,
+    gap: 2,
+    fontSize: 12,
+  },
+  actionGrid: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 0,
+  },
+  sets: {
+    display: "flex",
+    flexWrap: "wrap" as const,
     gap: 4,
   },
   btn: {
-    marginTop: 18,
-    padding: "13px 0",
-    borderRadius: 12,
+    flexShrink: 0,
+    padding: "10px 0",
+    borderRadius: 10,
     border: "none",
     background: "linear-gradient(135deg, #43a047, #1b5e20)",
     color: "#fff",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 800,
     cursor: "pointer",
     width: "100%",

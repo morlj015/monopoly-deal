@@ -272,7 +272,7 @@ function addBankPile(
 
 function attachOrbit(canvas: HTMLCanvasElement, camera: THREE.PerspectiveCamera) {
   let dragging = false, lastX = 0, lastY = 0;
-  let theta = 0.1, phi = 1.0, radius = 9;
+  let theta = 0, phi = 0.82, radius = 8.5;
 
   function update() {
     camera.position.set(
@@ -327,7 +327,7 @@ export function TableScene({ state, names }: Props) {
     const resize = () => {
       const w = container.clientWidth, h = container.clientHeight;
       renderer.setSize(w, h);
-      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };

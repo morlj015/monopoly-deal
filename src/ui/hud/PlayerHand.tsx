@@ -328,7 +328,7 @@ export function PlayerHand({ state, dispatch }: Props) {
         <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 14px 12px", alignItems: "flex-end" }}>
           {player.hand.map(card => (
             <div key={card.id} onClick={() => toggleDiscard(card)} style={{ opacity: discardIds.includes(card.id) ? 1 : 0.7 }}>
-              <CardFace card={card} width={64} selected={discardIds.includes(card.id)} />
+              <CardFace card={card} width={82} selected={discardIds.includes(card.id)} />
             </div>
           ))}
         </div>
@@ -394,7 +394,7 @@ export function PlayerHand({ state, dispatch }: Props) {
           filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.6))",
           opacity: 0.92,
         }}>
-          <CardFace card={ghostCard.card} width={64} />
+          <CardFace card={ghostCard.card} width={82} />
         </div>
       )}
 
@@ -470,7 +470,7 @@ export function PlayerHand({ state, dispatch }: Props) {
         )}
 
         {/* Hand */}
-        <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 14px 12px", alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 16px 16px", alignItems: "flex-end" }}>
           {player.hand.map(card => {
             const isJsn = card.kind === "action" && card.subtype === "jsn";
             return (
@@ -483,7 +483,7 @@ export function PlayerHand({ state, dispatch }: Props) {
                   userSelect: "none",
                 }}
               >
-                <CardFace card={card} width={64} selected={selected?.id === card.id} />
+                <CardFace card={card} width={82} selected={selected?.id === card.id} />
               </div>
             );
           })}
