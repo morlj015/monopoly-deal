@@ -40,7 +40,7 @@ export function HowToPlayOverlay({ onClose }: Props) {
           </Section>
 
           <Section heading="Complete Sets">
-            Brown&nbsp;2 · Light Blue&nbsp;3 · Pink&nbsp;3 · Orange&nbsp;3 · Red&nbsp;3 · Yellow&nbsp;3 · Green&nbsp;3 · Dark Blue&nbsp;2 · Railroad&nbsp;4 · Utility&nbsp;2
+            Brown&nbsp;2 · Light Blue&nbsp;3 · Pink&nbsp;3 · Orange&nbsp;3 · Red&nbsp;3 · Yellow&nbsp;3 · Green&nbsp;3 · Dark Blue&nbsp;2 · Cafe&nbsp;4 · Utility&nbsp;2
           </Section>
         </div>
 
